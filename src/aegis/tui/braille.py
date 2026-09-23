@@ -15,16 +15,19 @@ LAT_TOP, LAT_BOTTOM = 84.0, -58.0
 
 
 class BrailleCanvas:
-    def __init__(self, cols: int, rows: int):
+    def __init__(self, cols: int, rows: int, bbox: tuple[float, float, float, float] | None = None):
+        """``bbox`` = (lon min, lon max, lat min, lat max); default is the whole world."""
         self.cols, self.rows = max(cols, 1), max(rows, 1)
+        self.bbox = bbox or (-180.0, 180.0, LAT_BOTTOM, LAT_TOP)
         self.w, self.h = self.cols * 2, self.rows * 4
         self.bits = np.zeros((self.rows, self.cols), dtype=np.uint8)
         self.prio = np.full((self.rows, self.cols), -1, dtype=np.int8)
         self.style = np.full((self.rows, self.cols), "", dtype=object)
 
     def project(self, lon, lat):
-        x = (np.asarray(lon) + 180.0) / 360.0 * (self.w - 1)
-        y = (LAT_TOP - np.asarray(lat)) / (LAT_TOP - LAT_BOTTOM) * (self.h - 1)
+        x0, x1, y0, y1 = self.bbox
+        x = (np.asarray(lon) - x0) / (x1 - x0) * (self.w - 1)
+        y = (y1 - np.asarray(lat)) / (y1 - y0) * (self.h - 1)
         return x, y
 
     def dots(self, x, y, style: str, prio: int) -> None:

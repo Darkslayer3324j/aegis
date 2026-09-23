@@ -41,15 +41,26 @@ def _say(msg: str) -> None:
 
 @app.callback()
 def main(ctx: typer.Context,
-         version: bool = typer.Option(False, "--version", help="Print the version and exit.")) -> None:
+         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
+         scope: str = typer.Option("world", "--scope", help="world, or a national scope such as pakistan.")) -> None:
     if version:
         console.print(f"aegis {__version__}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
-        open_interface()
+        open_interface(_check_scope(scope))
 
 
-def open_interface() -> None:
+def _check_scope(scope: str) -> str:
+    if scope not in config.SCOPES:
+        _say(f"unknown scope '{scope}'. Available: {', '.join(config.SCOPES)}")
+        raise typer.Exit(1)
+    return scope
+
+
+SCOPE_OPT = typer.Option("world", "--scope", help="world, or a national scope such as pakistan.")
+
+
+def open_interface(scope: str = "world") -> None:
     from . import live
     from .tui.app import run
 
@@ -57,12 +68,12 @@ def open_interface() -> None:
         _say("no data yet: running first sync (downloads ~450 MB of UCDP releases once)")
         sync()
     try:
-        state = live.load()
+        state = live.load(scope)
     except FileNotFoundError:
-        _say("computing today's forecast...")
-        live.compute(progress=_say)
-        state = live.load()
-    run(state)
+        _say(f"computing today's forecast ({scope})...")
+        live.compute(progress=_say, scope=scope)
+        state = live.load(scope)
+    run(state, scope)
 
 
 @app.command()
@@ -77,13 +88,15 @@ def sync(refresh: bool = typer.Option(True, help="Recompute today's forecast aft
 
 
 @app.command()
-def forecast(asof: Optional[str] = typer.Option(None, help="Forecast as of this date (YYYY-MM-DD).")) -> None:
+def forecast(asof: Optional[str] = typer.Option(None, help="Forecast as of this date (YYYY-MM-DD)."),
+             scope: str = SCOPE_OPT) -> None:
     """Run the forecast cycle for today (or a past date, using only what was known then)."""
     import datetime as dt
 
     from . import live
 
-    live.compute(asof=dt.date.fromisoformat(asof) if asof else None, progress=_say)
+    live.compute(asof=dt.date.fromisoformat(asof) if asof else None, progress=_say,
+                 scope=_check_scope(scope))
 
 
 @app.command()
@@ -92,21 +105,25 @@ def backtest(start: str = typer.Option("2022-06-01", help="First forecast origin
              target: str = typer.Option("events", help="events or deaths"),
              draws: int = typer.Option(40, help="Nowcast draws per forecast."),
              truth: Optional[str] = typer.Option(None, help="Final release to score against, e.g. final-26.1 "
-                                                             "(default: newest; always recorded with its hash).")) -> None:
+                                                             "(default: newest; always recorded with its hash)."),
+             scope: str = SCOPE_OPT) -> None:
     """Walk-forward evaluation on historical vintages, scored against a pinned final release."""
     from . import backtest as bt
 
-    out = bt.run(start=start, end=end, target=target, draws=draws, truth=truth, progress=_say)
+    out = bt.run(start=start, end=end, target=target, draws=draws, truth=truth,
+                 scope=_check_scope(scope), progress=_say)
     console.print(Markdown((out / "report.md").read_text(encoding="utf-8")))
 
 
 @app.command()
-def explain(country: str = typer.Argument(..., help="Country name (partial match) or UCDP country id.")) -> None:
+def explain(country: str = typer.Argument(..., help="Country or province name (partial match), or id."),
+            scope: str = SCOPE_OPT) -> None:
     """Show the evidence behind a country's visibility estimate and forecast."""
     from . import live
     from .vintage import VintageStore
 
-    state = live.load()
+    scope = _check_scope(scope)
+    state = live.load(scope)
     df = state.countries
     if country.isdigit():
         hit = df[df["country_id"] == int(country)]
@@ -124,7 +141,11 @@ def explain(country: str = typer.Argument(..., help="Country name (partial match
     track = None
     if state.backtest_by_country is not None and cid in state.backtest_by_country.index:
         track = state.backtest_by_country.loc[cid]
-    ev = evidence.build(r, state.series[state.series["country_id"] == cid], track)
+    comp = None
+    if "type_of_violence" in state.events:
+        e = state.events[state.events["country_id"] == cid]
+        comp = e["type_of_violence"].value_counts().astype(int).to_dict()
+    ev = evidence.build(r, state.series[state.series["country_id"] == cid], track, comp)
     console.print()
     console.print(f"[bold]{ev.headline}[/]")
     console.print()
@@ -155,7 +176,7 @@ def explain(country: str = typer.Argument(..., help="Country name (partial match
 
     console.print("\n[bold]Revision trail[/]: the count for each recent month, as it stood after each release.")
     console.print("[#6b7a8c]This is the evidence the completeness estimate is learned from.[/]")
-    store = VintageStore.load()
+    store = VintageStore.load(scope)
     trail = live.revision_trail(store, cid)
     tt = Table(box=None)
     tt.add_column("month")

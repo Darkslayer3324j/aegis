@@ -12,11 +12,14 @@ import numpy as np
 import pandas as pd
 
 from . import observation as ob
+from . import observation_v2 as ob2
 from .models import LAGS_NEEDED, TRAIN_WINDOWS, forecast_all
 from .scoring import CountForecast
 from .vintage import VintageStore
 
 HORIZONS = (1, 2, 3)
+# Model name for each observation candidate. "nbar+vis" is V0, the v0.1 estimator.
+VIS_MODELS = {"V0": "nbar+vis", "V1": "nbar+V1", "V2": "nbar+V2", "V3": "nbar+V3"}
 WINDOW = TRAIN_WINDOWS + LAGS_NEEDED + max(HORIZONS)
 
 # Visibility decision thresholds. Abstention follows from an impaired observation
@@ -49,7 +52,8 @@ class OriginRun:
     Y_vis: np.ndarray                # nowcast-corrected means
     Y_draws: np.ndarray | None       # (countries, months, draws)
     is_final: np.ndarray             # (countries, months)
-    obs_model: ob.ObservationModel
+    obs_model: ob.ObservationModel   # V0: drives the visibility flags and completeness display
+    obs_models: dict                 # every candidate, keyed "V0".."V3"
     forecasts: dict[int, dict[str, list[CountForecast]]]
     status: pd.DataFrame             # per-country visibility state
 
@@ -81,7 +85,8 @@ def visibility_status(run_Y: np.ndarray, countries: np.ndarray, model: ob.Observ
 
 def run_origin(store: VintageStore, history: pd.DataFrame, origin: pd.Timestamp,
                target: str = "events", draws: int = 40, seed: int = 0,
-               countries: np.ndarray | None = None) -> OriginRun:
+               countries: np.ndarray | None = None,
+               candidates: tuple[str, ...] = ("V0", "V1", "V2", "V3")) -> OriginRun:
     L = store.last_data_month(origin)
     first = L - WINDOW + 1
     months = np.arange(first, L + 1)
@@ -94,17 +99,24 @@ def run_origin(store: VintageStore, history: pd.DataFrame, origin: pd.Timestamp,
     Y = wide(panel, panel[target], countries, first, L)
     fin = wide(panel, panel["is_final"].astype(float), countries, first, L).astype(bool)
 
-    model = ob.fit(history, store, origin, target)
-    vis_vals, vis_draws = ob.correct_panel(panel, model, L, target, draws=draws,
-                                           rng=np.random.default_rng(seed))
-    Y_vis = wide(panel, vis_vals, countries, first, L)
-    Y_draws = None
-    if vis_draws is not None:
-        Y_draws = np.stack([wide(panel, vis_draws[:, d], countries, first, L) for d in range(draws)], axis=2)
+    models = ob2.fit_all(history, store, origin, target)
+    views = {}
+    for key, name in VIS_MODELS.items():
+        if key not in candidates:
+            continue
+        vals, dr = ob.correct_panel(panel, models[key], L, target, draws=draws,
+                                    rng=np.random.default_rng(seed))
+        Yv = wide(panel, vals, countries, first, L)
+        Yd = None
+        if dr is not None:
+            Yd = np.stack([wide(panel, dr[:, d], countries, first, L) for d in range(draws)], axis=2)
+        views[name] = (Yv, Yd)
 
-    fcs = {h: forecast_all(Y, h, Y_vis, Y_draws) for h in HORIZONS}
-    status = visibility_status(Y, countries, model)
-    return OriginRun(origin, L, first, countries, panel, Y, Y_vis, Y_draws, fin, model, fcs, status)
+    fcs = {h: forecast_all(Y, h, views) for h in HORIZONS}
+    status = visibility_status(Y, countries, models["V0"])
+    Y_vis, Y_draws = views.get("nbar+vis", (Y, None))
+    return OriginRun(origin, L, first, countries, panel, Y, Y_vis, Y_draws, fin, models["V0"], models,
+                     fcs, status)
 
 
 def final_view(store: VintageStore, countries: np.ndarray, first: int, last: int,

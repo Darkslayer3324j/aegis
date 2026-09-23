@@ -66,6 +66,13 @@ def test_silent_feed_is_explained():
     assert any(label == "Silent feed" and "quiet feed is not a quiet world" in s for label, s in ev.points)
 
 
+def test_composition_describes_types_without_actors():
+    ev = build(CASES["ok"], series([14] * 24), composition={1: 30, 3: 12, 2: 0})
+    line = dict(ev.points)["Kind of violence"]
+    assert line.startswith("of 42 recorded events") and "30 were fighting between the state" in line
+    assert not BANNED.search(line)
+
+
 def test_track_record_reported():
     ev = build(CASES["ok"], series([14] * 24), TRACKS[1])
     rec = dict(ev.points)["Track record"]

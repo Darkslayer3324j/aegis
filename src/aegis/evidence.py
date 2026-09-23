@@ -50,8 +50,28 @@ def _pct(x: float) -> str:
     return f"{x:.0%}"
 
 
-def build(row: pd.Series, series: pd.DataFrame, track: pd.Series | None = None) -> Evidence:
-    """Summary for one country.
+# UCDP type_of_violence, described without naming any actor.
+VIOLENCE_TYPES = {
+    1: "fighting between the state and armed groups",
+    2: "fighting between non-state armed groups",
+    3: "armed groups or the state attacking civilians",
+}
+
+
+def composition_sentence(counts: dict[int, int]) -> str | None:
+    total = sum(counts.values())
+    if total == 0:
+        return None
+    parts = [f"{n} were {VIOLENCE_TYPES[t]}" for t, n in sorted(counts.items(), key=lambda kv: -kv[1])
+             if n and t in VIOLENCE_TYPES]
+    if len(parts) > 1:
+        parts[-1] = "and " + parts[-1]
+    return f"of {total} recorded events in the last 3 months, " + ", ".join(parts) + "."
+
+
+def build(row: pd.Series, series: pd.DataFrame, track: pd.Series | None = None,
+          composition: dict[int, int] | None = None) -> Evidence:
+    """Summary for one country (or province, in a national scope).
 
     ``row``: one row of the live countries table. ``series``: that country's last 24 months
     (columns m, observed, nowcast, is_final). ``track``: optional backtest record with
@@ -119,6 +139,9 @@ def build(row: pd.Series, series: pd.DataFrame, track: pd.Series | None = None) 
         ev.points.append(("Recent trend", (
             "no recorded events in the last 12 months. That is a statement about the record, not "
             "evidence that nothing is happening.")))
+
+    if composition and (sentence := composition_sentence(composition)):
+        ev.points.append(("Kind of violence", sentence))
 
     # 4. Why AEGIS differs from a simple model, and what lies further ahead.
     if status != "ABSTAIN":

@@ -21,6 +21,11 @@ data that existed at the time of each forecast.
 
 ![AEGIS terminal interface](docs/tui.svg)
 
+`aegis --scope pakistan` zooms on Pakistan's provinces, with province borders (geoBoundaries,
+public domain) and a breakdown of recorded violence by type:
+
+![AEGIS Pakistan provinces](docs/tui_pakistan.svg)
+
 ## Status: v0.1 (research core)
 
 | Layer | v0.1 |
@@ -82,6 +87,7 @@ Other commands:
 | `aegis backtest [--start --end --target events\|deaths]` | vintage-aware walk-forward evaluation |
 | `aegis explain <country>` | the evidence: how each recent month's count changed across releases |
 | `aegis status` | contents of the vintage store, and any releases with caveats |
+| `aegis --scope pakistan` | the same interface for Pakistan's provinces (also `forecast`, `backtest`, `explain`) |
 | `aegis verify` | re-hash every raw download against the manifest |
 
 ## How it works

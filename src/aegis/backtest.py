@@ -30,7 +30,7 @@ import pandas as pd
 from . import config
 from . import observation as ob
 from .models import forecast_all
-from .pipeline import HORIZONS, CoverageGap, final_view, run_origin
+from .pipeline import HORIZONS, VIS_MODELS, CoverageGap, final_view, run_origin
 from .scoring import CountForecast
 from .vintage import VintageStore, month_from_index
 
@@ -41,10 +41,12 @@ SENSITIVITY_BLOCKS = (3, 9)
 REPS = 4000
 
 
-def load_history(store: VintageStore, progress: Callable | None = None) -> pd.DataFrame:
+def load_history(store: VintageStore, progress: Callable | None = None,
+                 scope: str = "world") -> pd.DataFrame:
     """Historical snapshots, cached on disk and rebuilt when the manifest changes."""
-    cache = config.HOME / "history_cache.parquet"
-    stamp = config.HOME / "history_cache.stamp"
+    suffix = "" if scope == "world" else f"_{scope}"
+    cache = config.HOME / f"history_cache{suffix}.parquet"
+    stamp = config.HOME / f"history_cache{suffix}.stamp"
     key = f"{HISTORY_VERSION}:{config.MANIFEST.stat().st_mtime_ns}"
     if cache.exists() and stamp.exists() and stamp.read_text(encoding="utf-8") == key:
         return pd.read_parquet(cache)
@@ -67,10 +69,10 @@ def code_version() -> dict:
 
 
 def run(start: str = "2022-06-01", end: str | None = None, target: str = "events",
-        draws: int = 40, truth: str | None = None,
+        draws: int = 40, truth: str | None = None, scope: str = "world",
         progress: Callable[[str], None] = print) -> Path:
-    store = VintageStore.load()
-    history = load_history(store)
+    store = VintageStore.load(scope)
+    history = load_history(store, scope=scope)
     finals = [r.name for r in store.releases if r.kind == "final"]
     truth_name = truth or finals[-1]
     if truth_name not in finals:
@@ -129,8 +131,10 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
                 y = int(y_truth.get((int(c), m), 0))
                 if obs == 0 and y == 0 and run_.Y[j, -12:].sum() == 0:
                     continue  # quiet country, nothing to learn
-                for kind, fc in (("nowcast", om.nowcast(int(c), age, obs)),
-                                 ("raw", CountForecast.point(obs, raw_alpha))):
+                kinds = [(("nowcast" if k == "V0" else f"nowcast-{k}"), mdl.nowcast(int(c), age, obs))
+                         for k, mdl in run_.obs_models.items()]
+                kinds.append(("raw", CountForecast.point(obs, raw_alpha)))
+                for kind, fc in kinds:
                     sc = fc.score(y, rng)
                     nowcast_rows.append({"origin": T, "country_id": int(c), "age": age, "kind": kind,
                                          "obs": obs, "y": y, "C": om.C(int(c), age), **sc})
@@ -140,17 +144,23 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
     scores = pd.DataFrame(rows)
     nowcasts = pd.DataFrame(nowcast_rows)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M")
-    out = config.RESULTS / f"backtest-{stamp}"
+    results = config.scope_results(scope)
+    out = results / f"backtest-{stamp}"
     out.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(out / "scores.parquet", index=False)
     nowcasts.to_parquet(out / "nowcasts.parquet", index=False)
 
     summary = summarise(scores)
-    summary["nowcast"] = summarise_nowcast(nowcasts)
+    summary["nowcast"] = summarise_nowcast(nowcasts[nowcasts["kind"].isin(["nowcast", "raw"])])
+    summary["nowcast_candidates"] = {
+        k: summarise_nowcast(nowcasts[nowcasts["kind"].isin([f"nowcast-{k}", "raw"])]
+                             .replace({"kind": {f"nowcast-{k}": "nowcast"}}))
+        for k in VIS_MODELS if k != "V0"}
+    summary["candidates"] = decide(scores)
     summary["persistence"] = completeness_persistence(history, store, truth_name, target)
     per_model = scores[(scores["regime"] == "vintage") & (scores["model"] == "nbar")]
     summary["meta"] = {
-        "target": target, "draws": draws,
+        "scope": scope, "target": target, "draws": draws,
         "origins_in_range": len(origins), "origins_scored": int(per_model["origin"].nunique()),
         "origins_skipped": skipped,
         "origin_horizons_scored": int(per_model.groupby(["origin", "h"]).ngroups),
@@ -169,7 +179,7 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
     (out / "report.md").write_text(report(summary), encoding="utf-8")
-    (config.RESULTS / "latest_backtest.txt").write_text(out.name, encoding="utf-8")
+    (results / "latest_backtest.txt").write_text(out.name, encoding="utf-8")
     progress(f"wrote {out}")
     return out
 
@@ -305,6 +315,43 @@ def completeness_persistence(history: pd.DataFrame, store: VintageStore, truth_n
         "episode_share_3plus": float((lengths >= 3).mean()),
         "countries": int(a1["country_id"].nunique()),
     }
+
+
+def decide(scores: pd.DataFrame) -> dict:
+    """PROTOCOL.md §5 decision rule, applied to every candidate against ``nbar``."""
+    vint = scores[(scores["regime"] == "vintage") & scores["active"]]
+    base = vint[vint["model"] == "nbar"]
+    base_crps = float(base["crps"].mean())
+    base_cov = float(base["in80"].mean())
+    base_tail = float(((base["pit"] < 0.05) | (base["pit"] > 0.95)).mean())
+    base_c = base.groupby("country_id")["crps"].mean()
+    out = {}
+    for key, name in VIS_MODELS.items():
+        c = vint[vint["model"] == name]
+        if c.empty:
+            continue
+        prim = paired_diff(scores, name, "nbar", mask=lambda s: s["active"])
+        logs = paired_diff(scores, name, "nbar", metric="logs", mask=lambda s: s["active"])
+        cov = float(c["in80"].mean())
+        tail = float(((c["pit"] < 0.05) | (c["pit"] > 0.95)).mean())
+        per_c = c.groupby("country_id")["crps"].mean()
+        worse = float((per_c > base_c.reindex(per_c.index)).mean())
+        rel = -prim["mean_diff"] / base_crps
+        checks = {
+            "primary_crps": prim["ci95"][1] < 0 and rel >= 0.02,
+            "log_not_worse": logs["ci95"][0] <= 0,
+            "coverage": abs(cov - base_cov) <= 0.02 or abs(cov - 0.8) <= abs(base_cov - 0.8),
+            "tail_miss": tail - base_tail <= 0.02,
+            "per_country": worse <= 0.60,
+        }
+        out[key] = {"model": name, "crps_diff": prim, "relative_improvement": rel, "logs_diff": logs,
+                    "cov80": cov, "base_cov80": base_cov, "tail_miss": tail, "base_tail_miss": base_tail,
+                    "share_countries_worse": worse, "checks": checks, "passes": all(checks.values())}
+    passing = [k for k, v in out.items() if v["passes"] and k != "V0"]
+    best = min(passing, key=lambda k: out[k]["crps_diff"]["mean_diff"]) if passing else None
+    return {"results": out, "selected": best,
+            "rule": "PROTOCOL.md §5: CRPS CI upper < 0 and >= 2% better; log CI lower <= 0; "
+                    "coverage and tail-miss within 2 points; worse in <= 60% of active countries"}
 
 
 def summarise(scores: pd.DataFrame) -> dict:
@@ -459,6 +506,34 @@ def report(s: dict) -> str:
     for k, g in s["visibility_status"].items():
         lines.append(f"| {k} | {g['n']} | {g['base_mean']:.1f} | {g['crps']:.3f} | {g['ncrps']:.3f} | "
                      f"{g['tail_miss']:.1%} | {g['cov80']:.1%} | {g['pit_mean']:.3f} |")
+
+    cd = s.get("candidates")
+    if cd:
+        lines += ["", "## v0.2 candidates: PROTOCOL.md §5 decision rule (development data)", "",
+                  f"Rule: {cd['rule']}.", "",
+                  "| Candidate | ΔCRPS vs nbar [95% CI] | Relative | ΔLog [95% CI] | Cov80 (nbar) | Tail-miss (nbar) | Countries worse | Passes |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for key, r in cd["results"].items():
+            d, g = r["crps_diff"], r["logs_diff"]
+            failed = [k for k, ok in r["checks"].items() if not ok]
+            lines.append(
+                f"| {key} (`{r['model']}`) | {d['mean_diff']:+.3f} [{d['ci95'][0]:+.3f}, {d['ci95'][1]:+.3f}] | "
+                f"{r['relative_improvement']:+.1%} | {g['mean_diff']:+.3f} [{g['ci95'][0]:+.3f}, {g['ci95'][1]:+.3f}] | "
+                f"{r['cov80']:.1%} ({r['base_cov80']:.1%}) | {r['tail_miss']:.1%} ({r['base_tail_miss']:.1%}) | "
+                f"{r['share_countries_worse']:.0%} | {'**yes**' if r['passes'] else 'no: ' + ', '.join(failed)} |")
+        lines += ["", f"**Selected for confirmation:** {cd['selected'] or 'none: no candidate passes on development data'}."]
+    ncc = s.get("nowcast_candidates", {})
+    if ncc:
+        lines += ["", "Nowcast CRPS vs raw count by candidate (age 1, all countries):", "",
+                  "| Candidate | Diff [95% CI] | Diff where C < 0.8 [95% CI] |", "|---|---|---|"]
+        v0 = s["nowcast"].get(1) or s["nowcast"].get("1")
+        rows = [("V0", v0)] + [(k, v.get(1) or v.get("1")) for k, v in ncc.items()]
+        for k, g in rows:
+            if not g:
+                continue
+            def cell(d):
+                return "–" if not d.get("n") else f"{d['mean_diff']:+.2f} [{d['ci95'][0]:+.2f}, {d['ci95'][1]:+.2f}]"
+            lines.append(f"| {k} | {cell(g['all'])} | {cell(g['low_completeness'])} |")
 
     ps = s.get("persistence")
     if ps and ps.get("n_country_months"):

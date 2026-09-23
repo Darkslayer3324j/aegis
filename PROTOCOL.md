@@ -89,6 +89,14 @@ No post-hoc re-slicing turns a fail into a pass.
    `aegis backtest --truth final-27.1 --start 2026-01-01`. The result is published as-is.
 4. The prospective archive is scored the same way when its truth arrives.
 
+## 7. Development log
+
+| Round | Date | Result (world, 38 origins, truth `final-26.1`) | Decision |
+|---|---|---|---|
+| 1 | 23 Sep 2026 | No candidate passes §5. ΔCRPS vs `nbar`: V0 +0.39 [+0.09, +0.74]; V1 +0.25 [−0.03, +0.54]; V2 +0.35 [+0.17, +0.53]; V3 +1.45 [+0.80, +2.14]. All improve log score (about −0.09 to −0.10, CIs exclude 0). V2 has the best nowcast; V3's growth signal overshoots badly where completeness < 0.8. V3 is better in 75% of countries but worse on the mean, because the mean is dominated by a few high-volume countries. | Nothing carried to confirmation. Development continues (round 2). §5 is **not** changed after seeing these results. A scale-free primary metric may be proposed only for a *new* confirmation period, logged here before any result on it is seen. |
+
+Pakistan provinces (same protocol, 8 units, round 1): no candidate passes. V1 comes closest: ΔCRPS −0.108 [−0.229, +0.010], +6.1% relative, with log score significantly better.
+
 | Field | Value |
 |---|---|
 | Chosen candidate | *(to be filled before freezing)* |

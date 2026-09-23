@@ -15,7 +15,8 @@ from .backtest import load_history
 from .pipeline import HORIZONS, run_origin
 from .vintage import VintageStore, month_from_index
 
-LIVE_DIR = config.RESULTS / "live"
+def live_dir(scope: str = "world"):
+    return config.scope_results(scope) / "live"
 
 
 def _interval(fc) -> tuple[int, int]:
@@ -23,9 +24,10 @@ def _interval(fc) -> tuple[int, int]:
 
 
 def compute(asof: dt.date | None = None, target: str = "events", draws: int = 60,
-            progress=print) -> Path:
-    store = VintageStore.load()
-    history = load_history(store)
+            progress=print, scope: str = "world") -> Path:
+    LIVE_DIR = live_dir(scope)
+    store = VintageStore.load(scope)
+    history = load_history(store, scope=scope)
     T = pd.Timestamp(asof or dt.date.today())
     run = run_origin(store, history, T, target=target, draws=draws)
     L, C = run.L, run.countries
@@ -66,13 +68,13 @@ def compute(asof: dt.date | None = None, target: str = "events", draws: int = 60
     pd.DataFrame(series).to_parquet(LIVE_DIR / "series.parquet", index=False)
 
     snap = store.snapshot(T)
-    recent = snap[snap["m"] > L - 3][["country_id", "latitude", "longitude", "m", "best"]]
+    recent = snap[snap["m"] > L - 3][["country_id", "latitude", "longitude", "m", "best", "type_of_violence"]]
     recent.to_parquet(LIVE_DIR / "events.parquet", index=False)
 
     releases = store.available(T)
     latest_c = max((r for r in releases if r.kind != "final"), key=lambda r: r.available)
     meta = {
-        "origin": str(T.date()), "data_through": str(month_from_index(L)), "target": target,
+        "scope": scope, "origin": str(T.date()), "data_through": str(month_from_index(L)), "target": target,
         "final_release": om.final_name, "latest_candidate": latest_c.name,
         "latest_candidate_available": str(latest_c.available.date()),
         "observation_pairs": om.n_pairs,
@@ -94,14 +96,15 @@ class LiveState:
     backtest_by_country: pd.DataFrame | None
 
 
-def load() -> LiveState:
+def load(scope: str = "world") -> LiveState:
+    LIVE_DIR = live_dir(scope)
     if not (LIVE_DIR / "meta.json").exists():
         raise FileNotFoundError("No live forecast yet. Run `aegis forecast`.")
     meta = json.loads((LIVE_DIR / "meta.json").read_text(encoding="utf-8"))
     bt, by_c = None, None
-    pointer = config.RESULTS / "latest_backtest.txt"
+    pointer = config.scope_results(scope) / "latest_backtest.txt"
     if pointer.exists():
-        d = config.RESULTS / pointer.read_text(encoding="utf-8").strip()
+        d = config.scope_results(scope) / pointer.read_text(encoding="utf-8").strip()
         if (d / "summary.json").exists():
             bt = json.loads((d / "summary.json").read_text(encoding="utf-8"))
             s = pd.read_parquet(d / "scores.parquet", columns=["regime", "model", "country_id", "crps", "in80"])

@@ -98,6 +98,42 @@ events. 1,540 country-months across 54 countries.
 | One-month episodes | 67% |
 | Three-plus-month episodes | 16% |
 
+## v0.2 development round 1 (PROTOCOL.md §4–5)
+
+Four observation-model candidates, fixed before any result, were run on the same 38 origins
+(`results/backtest-20260923-2303`).
+
+| Candidate | ΔCRPS vs `nbar` [95% CI] | Relative | ΔLog [95% CI] | Worse in % of countries | Nowcast ΔCRPS, age 1 |
+|---|---|---|---|---|---|
+| V0 (v0.1 estimator) | +0.391 [+0.094, +0.744] | −3.8% | −0.099 [−0.192, −0.033] | 54% | −1.99 [−2.88, −1.00] |
+| V1 (recent months only) | +0.248 [−0.026, +0.541] | −2.4% | −0.098 [−0.193, −0.029] | 61% | −1.99 [−2.88, −1.00] |
+| V2 (robust long-run median) | +0.353 [+0.166, +0.531] | −3.5% | −0.098 [−0.194, −0.028] | 45% | **−2.24 [−3.26, −1.31]** |
+| V3 (live growth signal) | +1.453 [+0.796, +2.143] | −14.2% | −0.083 [−0.168, −0.020] | **25%** | +1.22 [−1.02, +3.39] |
+
+**No candidate passes the pre-agreed rule.** What this round shows:
+- **The hypothesis behind V3 was wrong as implemented.** A first-to-second-release growth
+  signal does not predict the final count well where completeness is low. Its nowcast
+  there is worse by +30 CRPS.
+- **Better nowcasts do not automatically give better forecasts.** V2 has the best nowcast
+  but still loses on the forecast. The loss therefore lies in how corrected history feeds
+  the forecasting model, not only in the correction itself.
+- **The mean CRPS is dominated by a few high-volume countries.** V3 is better than the
+  baseline in 75% of countries and still loses on the mean. The primary metric stays as
+  agreed; see PROTOCOL.md §7 for how a change could be proposed honestly.
+
+## Pakistan provinces (national scope)
+
+Same protocol: 8 units (7 provinces plus "not recorded"), 38 origins, 888 forecasts per
+model (`results/pakistan/backtest-20260923-2255`).
+
+| | Result |
+|---|---|
+| Reporting | UCDP's first releases for Pakistan are complete, and slightly over-report (completeness about 107%). No province is flagged. |
+| AEGIS (V0) vs baseline | CRPS −0.090 [−0.210, +0.025] (5% better, **not significant**); log score **−0.071 [−0.117, −0.025]** (significantly better) |
+| Closest candidate | V1: CRPS −0.108 [−0.229, +0.010] (6.1% better; the upper bound misses zero by 0.010) |
+| Calibration | The baseline over-forecasts Pakistan's provinces (PIT mass in the low bins). AEGIS's PIT histogram is close to flat. |
+| Decision | Does not pass yet. With 8 units and 38 origins there is little data; the confirmation test adds 2026. |
+
 ## §6 What the failure suggests
 
 The correction fails where it should help most (C₁ < 0.8). Table 5 now supports the

@@ -177,16 +177,17 @@ GED_COLUMNS = (
 ).split(",")
 
 
-def _read_ged_csv(fh) -> tuple[pd.DataFrame, bool]:
+def _read_ged_csv(fh, columns: list[str] | None = None) -> tuple[pd.DataFrame, bool]:
     """Read a GED csv, tolerating a missing header row. Returns (frame, had_header)."""
+    columns = columns or config.EVENT_COLUMNS
     head = pd.read_csv(fh, nrows=0)
     fh.seek(0)
     if "id" in head.columns and "date_start" in head.columns:
-        return pd.read_csv(fh, usecols=config.EVENT_COLUMNS, low_memory=False), True
+        return pd.read_csv(fh, usecols=columns, low_memory=False), True
     if len(head.columns) != len(GED_COLUMNS):
         raise ValueError(f"unrecognised GED layout with {len(head.columns)} columns")
     df = pd.read_csv(fh, header=None, names=GED_COLUMNS, low_memory=False)
-    return df[config.EVENT_COLUMNS], False
+    return df[columns], False
 
 
 def _to_parquet(raw: Path, kind: str, dest: Path) -> tuple[int, bool]:
@@ -262,6 +263,42 @@ def sync(progress: Callable[[str], None] = print, only: Iterable[str] | None = N
             save_manifest(manifest)  # after every file, so an interrupted sync keeps progress
             progress(f"[{i}/{len(todo)}] {rel.name}: {rel.rows} events, available {rel.available} ({rel.date_source})")
     return list(manifest.values())
+
+
+def build_scope_store(scope: str, progress: Callable[[str], None] = print) -> int:
+    """Derive a national scope's store from the raw releases already on disk.
+
+    Keeps only that country's events and adds the first-level administrative unit
+    (``adm_1``). Nothing is downloaded, and the raw files are only read. Returns the number
+    of releases written.
+    """
+    spec = config.SCOPES[scope]
+    out_dir = config.scope_store(scope)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cols = config.EVENT_COLUMNS + ["adm_1"]
+    written = 0
+    for row in load_manifest().values():
+        dest = out_dir / row["store_file"]
+        if dest.exists():
+            continue
+        raw = config.RAW / row["raw_file"]
+        if row["kind"] == "final":
+            with zipfile.ZipFile(raw) as z:
+                member = next(n for n in z.namelist() if n.lower().endswith(".csv"))
+                df, _ = _read_ged_csv(io.BytesIO(z.read(member)), cols)
+        else:
+            with raw.open("rb") as fh:
+                df, _ = _read_ged_csv(fh, cols)
+        df = df[pd.to_numeric(df["country_id"], errors="coerce") == spec["country_id"]].copy()
+        for col in ("date_start", "date_end"):
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+        df = df.dropna(subset=["date_start"])
+        df["country_id"] = df["country_id"].astype(int)
+        df["best"] = pd.to_numeric(df["best"], errors="coerce").fillna(0).astype(int)
+        df.to_parquet(dest, index=False)
+        written += 1
+        progress(f"{scope}: {row['name']} -> {len(df)} events")
+    return written
 
 
 def verify() -> list[str]:

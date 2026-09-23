@@ -100,12 +100,13 @@ def ma6_mean(Y: np.ndarray, s: int) -> np.ndarray:
     return Y[:, s - 5:s + 1].mean(axis=1)
 
 
-def forecast_all(Y: np.ndarray, h: int, Y_vis: np.ndarray | None = None,
-                 Y_vis_draws: np.ndarray | None = None) -> dict[str, list[CountForecast]]:
+def forecast_all(Y: np.ndarray, h: int,
+                 vis: dict[str, tuple[np.ndarray, np.ndarray | None]] | None = None
+                 ) -> dict[str, list[CountForecast]]:
     """Forecasts for every country (row of ``Y``) at horizon ``h`` for each model.
 
-    ``Y_vis`` is the nowcast-corrected mean matrix; ``Y_vis_draws`` has shape
-    (countries, months, draws). Without them the visibility model is skipped.
+    ``vis`` maps a model name (e.g. ``"nbar+vis"``) to a nowcast-corrected view:
+    (mean matrix, draws of shape (countries, months, draws) or None).
     """
     s = Y.shape[1] - 1
     out: dict[str, list[CountForecast]] = {}
@@ -114,13 +115,13 @@ def forecast_all(Y: np.ndarray, h: int, Y_vis: np.ndarray | None = None,
         out[name] = [CountForecast.point(m, a) for m in fn(Y, s)]
     base = NBAR.fit(Y, h)
     out["nbar"] = [CountForecast.point(m, base.alpha) for m in base.mean(features(Y, s))]
-    if Y_vis is not None:
-        vis = NBAR.fit(Y_vis, h)
+    for name, (Y_vis, Y_vis_draws) in (vis or {}).items():
+        model = NBAR.fit(Y_vis, h)
         if Y_vis_draws is not None:
             mus = np.column_stack([
-                vis.mean(features(Y_vis_draws[:, :, d], s)) for d in range(Y_vis_draws.shape[2])
+                model.mean(features(Y_vis_draws[:, :, d], s)) for d in range(Y_vis_draws.shape[2])
             ])
         else:
-            mus = vis.mean(features(Y_vis, s))[:, None]
-        out["nbar+vis"] = [CountForecast(mus[i], vis.alpha) for i in range(len(Y))]
+            mus = model.mean(features(Y_vis, s))[:, None]
+        out[name] = [CountForecast(mus[i], model.alpha) for i in range(len(Y))]
     return out

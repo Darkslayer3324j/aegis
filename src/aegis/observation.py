@@ -199,6 +199,9 @@ def correct_panel(panel: pd.DataFrame, model: ObservationModel, L: int, target: 
     values = panel[target].to_numpy(dtype=float).copy()
     ages = (L - panel["m"].to_numpy() + 1)
     open_rows = np.flatnonzero(~panel["is_final"].to_numpy())
+    cap = getattr(model, "age_cap", None)
+    if cap is not None:  # candidate V1: months older than the cap are left as observed
+        open_rows = open_rows[ages[open_rows] <= cap]
     mu = model.nowcast_means(panel["country_id"].to_numpy()[open_rows], ages[open_rows],
                              values[open_rows])
     mu = np.maximum(mu, 1e-3)

@@ -25,6 +25,7 @@ from .braille import BrailleCanvas, load_land
 
 STATUS_STYLE = {"OK": "#3fc1b0", "WARN": "#e6b450", "ABSTAIN": "#ff5f56"}
 LAND_STYLE = "#34475a"
+BORDER_STYLE = "#4f6a86"
 SELECTED_STYLE = "bold #ffffff"
 ACCENT = "#7aa2f7"
 DIM = "#6b7a8c"
@@ -46,11 +47,14 @@ def spark(values: np.ndarray, vmax: float) -> str:
 
 
 class WorldMap(Static):
-    def __init__(self, state: LiveState, **kw):
+    def __init__(self, state: LiveState, scope: str = "world", **kw):
         super().__init__(**kw)
         self.state = state
         self.selected: int | None = None
+        spec = config.SCOPES[scope]
+        self.bbox = spec.get("bbox")
         self.rings = load_land(config.GEO / "ne_110m_land.geojson")
+        self.borders = load_land(config.GEO / spec["boundaries"]) if "boundaries" in spec else []
         status = state.countries.set_index("country_id")["status"]
         ev = state.events.dropna(subset=["latitude", "longitude"])
         self.ev = ev.assign(status=ev["country_id"].map(status).fillna("OK"))
@@ -66,10 +70,13 @@ class WorldMap(Static):
         w, h = self.size.width, self.size.height
         if w < 10 or h < 4:
             return
-        cv = BrailleCanvas(w, h)
+        cv = BrailleCanvas(w, h, self.bbox)
         for ring in self.rings:
             x, y = cv.project(ring[:, 0], ring[:, 1])
             cv.polyline(x, y, LAND_STYLE, 0)
+        for ring in self.borders:
+            x, y = cv.project(ring[:, 0], ring[:, 1])
+            cv.polyline(x, y, BORDER_STYLE, 0)
         for prio, status in ((1, "OK"), (2, "WARN"), (3, "ABSTAIN")):
             e = self.ev[self.ev["status"] == status]
             x, y = cv.project(e["longitude"].to_numpy(), e["latitude"].to_numpy())
@@ -155,7 +162,11 @@ class EvidencePanel(Static):
         track = None
         if state.backtest_by_country is not None and c in state.backtest_by_country.index:
             track = state.backtest_by_country.loc[c]
-        ev = evidence.build(row, s, track)
+        comp = None
+        if "type_of_violence" in state.events:
+            e = state.events[state.events["country_id"] == c]
+            comp = e["type_of_violence"].value_counts().astype(int).to_dict()
+        ev = evidence.build(row, s, track, comp)
         sstyle = STATUS_STYLE[ev.status]
         parts = [Text(f" WHY: {ev.country.upper()} ", style=f"bold reverse {sstyle}"), Text(""),
                  Text(ev.headline, style="bold"), Text("")]
@@ -261,9 +272,11 @@ class AegisApp(App):
         Binding("escape", "focus_table", "Table", show=False),
     ]
 
-    def __init__(self, state: LiveState):
+    def __init__(self, state: LiveState, scope: str = "world"):
         super().__init__()
         self.state = state
+        self.scope = scope
+        self.unit = config.SCOPES[scope]["unit"]
         self.sort = "forecast"
         self.active_only = True
         self.query_text = ""
@@ -273,16 +286,18 @@ class AegisApp(App):
         counts = self.state.countries["status"].value_counts()
         yield Static(
             Text.assemble(
-                ("◉ AEGIS ", "bold #7aa2f7"), ("visibility-aware conflict forecasting", DIM),
+                ("◉ AEGIS ", "bold #7aa2f7"),
+                (("visibility-aware conflict forecasting" if self.scope == "world"
+                  else f"{config.SCOPES[self.scope]['title']} · provinces"), DIM),
                 (f"   origin {m['origin']} · data through {m['data_through']} · {m['latest_candidate']}   ", DIM),
                 (f"OK {counts.get('OK', 0)} ", STATUS_STYLE["OK"]),
                 (f"WARN {counts.get('WARN', 0)} ", STATUS_STYLE["WARN"]),
                 (f"ABSTAIN {counts.get('ABSTAIN', 0)}", STATUS_STYLE["ABSTAIN"]),
             ), id="topbar")
-        yield WorldMap(self.state, id="map")
+        yield WorldMap(self.state, self.scope, id="map")
         with Horizontal(id="bottom"):
             with Vertical(id="left"):
-                yield Input(placeholder="/ filter countries", id="filter")
+                yield Input(placeholder=f"/ filter {self.unit}s", id="filter")
                 yield DataTable(id="watch", cursor_type="row", zebra_stripes=False)
             with TabbedContent(id="tabs", initial="tab-overview"):
                 with TabPane("Overview", id="tab-overview"):
@@ -294,7 +309,7 @@ class AegisApp(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#watch", DataTable)
-        table.add_columns("Country", "Rep", "Exp", "Vis", "Next", "Status")
+        table.add_columns(self.unit.capitalize(), "Rep", "Exp", "Vis", "Next", "Status")
         self.fill_table()
         table.focus()
 
@@ -375,5 +390,5 @@ class AegisApp(App):
                     title="Not in v0.1")
 
 
-def run(state: LiveState) -> None:
-    AegisApp(state).run()
+def run(state: LiveState, scope: str = "world") -> None:
+    AegisApp(state, scope).run()

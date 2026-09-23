@@ -31,11 +31,45 @@ None of these exists today.
 
 A public violence forecaster can be pointed at any population by anyone. AEGIS
 therefore:
-- stays at **country level**. It publishes no sub-national cells, names no groups or
-  individuals, and does no predictive policing, targeting or scanning;
+- stays at **country level, or province level for reviewed national scopes** (currently
+  Pakistan; see below). It publishes nothing finer, names no groups or individuals, and
+  does no predictive policing, targeting or scanning;
 - is not marketed to, or tailored for, any military, police or intelligence body;
 - will review dual-use and export-control questions **before** any change to that
   position, and record the decision here.
+
+## Readiness: what "good enough to rely on" requires
+
+The owner's standard (23 September 2026): *if it fails its tests, it is not ready.* These
+are the tests. AEGIS may be described as reliable only when every row is **met**.
+
+| # | Test | How it is checked | Status (23 Sep 2026) |
+|---|---|---|---|
+| 1 | Engineering integrity: no leakage, reproducible | `pytest` (43 tests, incl. the mutation-checked end-to-end anti-leak test); pinned truth and commit | **met** |
+| 2 | Beats the simple baseline on development data | PROTOCOL.md §5 decision rule over 38 origins | not met (see RESULTS.md) |
+| 3 | Beats it on data never seen | Single confirmatory run against `final-27.1` (about June 2027) | pending |
+| 4 | Matches or beats established systems on the same targets | Head-to-head with VIEWS (country-month) and ACLED CAST (province-level; needs the user's own ACLED key) | not started |
+| 5 | Calibrated: the 80% range covers 75–85% | Coverage in the backtest (currently 91–94%: ranges too wide to be useful) | not met |
+| 6 | A prospective record | At least 12 months of forecasts archived *before* their outcomes were known, then scored | not started |
+| 7 | A named user and decision, with a harm analysis | Written with that user: what action the forecast informs, and the cost of a false OK during an onset vs a false WARN | not started |
+
+## Province-level scope (dual-use review, 23 September 2026)
+
+The owner asked for Pakistan-specific forecasting, where terrorism is a major concern.
+Reviewed before building:
+
+- **Granularity:** first-level administrative units (provinces), monthly. The same
+  granularity is published openly for every country by ACLED CAST, so AEGIS adds no new
+  capability for misuse at this level. **District, city or grid-cell forecasts are out of
+  scope** without a new review.
+- **Content:** counts by UCDP violence type ("state vs armed groups", "attacks on
+  civilians", "between armed groups"). **No actor, group or individual is named**
+  anywhere in the interface or summaries.
+- **"Terrorism"** is not a UCDP category. AEGIS does not claim to forecast terrorism as
+  such; it forecasts recorded organised violence, which in Pakistan is dominated by
+  fighting between the state and armed groups and by attacks on civilians.
+- **Purpose:** research and preparedness framing only, under all the rules above. It is
+  not marketed to military, police or intelligence users.
 
 ## Evidence panel wording rules
 

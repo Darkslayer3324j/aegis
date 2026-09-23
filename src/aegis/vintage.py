@@ -45,6 +45,20 @@ def month_from_index(i: int) -> pd.Period:
     return pd.Period(year=i // 12, month=i % 12 + 1, freq="M")
 
 
+def to_units(df: pd.DataFrame, scope: str) -> pd.DataFrame:
+    """Relabel a national scope's events so that each province plays the role of a country."""
+    spec = config.SCOPES[scope]
+    adm = df["adm_1"].fillna("").str.lower()
+    uid = pd.Series(spec["unassigned"][0], index=df.index)
+    name = pd.Series(spec["unassigned"][1], index=df.index)
+    for unit_id, unit_name, keys in spec["units"]:
+        hit = adm.str.contains("|".join(keys), regex=True) & (uid == spec["unassigned"][0])
+        uid[hit], name[hit] = unit_id, unit_name
+    out = df.drop(columns=["adm_1"]).copy()
+    out["country_id"], out["country"], out["region"] = uid.astype(int), name, spec["title"]
+    return out
+
+
 @dataclass
 class ReleaseMeta:
     name: str
@@ -68,10 +82,15 @@ class VintageStore:
 
     # ------------------------------------------------------------------ loading
     @classmethod
-    def load(cls) -> "VintageStore":
+    def load(cls, scope: str = "world") -> "VintageStore":
+        """All releases for a scope. A national scope's "countries" are its provinces."""
         if not config.MANIFEST.exists():
             raise FileNotFoundError("No vintage store yet. Run `aegis sync` first.")
         rows = json.loads(config.MANIFEST.read_text(encoding="utf-8"))
+        store_dir = config.scope_store(scope)
+        if scope != "world" and not all((store_dir / r["store_file"]).exists() for r in rows):
+            from .ingest import build_scope_store
+            build_scope_store(scope)
         releases, frames = [], []
         for r in rows:
             meta = ReleaseMeta(
@@ -79,7 +98,9 @@ class VintageStore:
                 cover_start=month_index(pd.Period(r["cover_start"], "M")),
                 cover_end=month_index(pd.Period(r["cover_end"], "M")),
             )
-            df = pd.read_parquet(config.STORE / r["store_file"])
+            df = pd.read_parquet(store_dir / r["store_file"])
+            if scope != "world":
+                df = to_units(df, scope)
             if meta.kind == "final":
                 # Finals carry 35+ years of history; AEGIS only needs recent years.
                 df = df[df["date_start"] >= "2015-01-01"]
