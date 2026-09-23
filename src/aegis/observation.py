@@ -51,9 +51,7 @@ def build_history(store: VintageStore, origins: list[pd.Timestamp], progress=Non
         # Keep only months some available release actually covered. Without this, months
         # before the first Candidate release (and before the first final in the store)
         # look like "0 reported" and poison the completeness estimates.
-        cand = [r.cover_start for r in store.available(t) if r.kind != "final"]
-        covered_from = min(cand) if cand else L + 1
-        p = p[p["is_final"] | (p["m"] >= covered_from)]
+        p = p[store.covered(t, p["m"].to_numpy())]
         p["origin"] = t
         p["L"] = L
         p["age"] = L - p["m"] + 1
@@ -193,8 +191,10 @@ def correct_panel(panel: pd.DataFrame, model: ObservationModel, L: int, target: 
                   draws: int = 0, rng: np.random.Generator | None = None):
     """Replace non-final counts with nowcast means (and optionally sample draws).
 
-    Returns (mean_values, draw_matrix | None) aligned with ``panel`` rows. Final rows and
-    rows older than the pooled age bucket's reach keep their observed value.
+    Returns (mean_values, draw_matrix | None) aligned with ``panel`` rows. Final rows keep
+    their observed value. **Every** non-final row is corrected: rows older than
+    ``MAX_AGE`` share the pooled age-``MAX_AGE`` completeness. (Whether old non-final
+    months should be corrected at all is an open v0.2 question; see RESULTS.md.)
     """
     values = panel[target].to_numpy(dtype=float).copy()
     ages = (L - panel["m"].to_numpy() + 1)

@@ -32,3 +32,4 @@ packages = ["src/aegis"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "tests"]

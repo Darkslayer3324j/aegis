@@ -27,6 +27,17 @@ VOL_WARN = 1.0
 DARK_MIN_ACTIVITY = 3.0
 
 
+class CoverageGap(Exception):
+    """Some month in the model window is covered by no release available at the origin.
+
+    Such a month is unknown, not zero, so the origin is skipped rather than filled in.
+    """
+
+    def __init__(self, origin, gaps):
+        self.origin, self.gaps = origin, gaps
+        super().__init__(f"{origin.date()}: {len(gaps)} uncovered months")
+
+
 @dataclass
 class OriginRun:
     origin: pd.Timestamp
@@ -73,6 +84,10 @@ def run_origin(store: VintageStore, history: pd.DataFrame, origin: pd.Timestamp,
                countries: np.ndarray | None = None) -> OriginRun:
     L = store.last_data_month(origin)
     first = L - WINDOW + 1
+    months = np.arange(first, L + 1)
+    gaps = months[~store.covered(origin, months)]
+    if len(gaps):
+        raise CoverageGap(origin, gaps)
     if countries is None:
         countries = np.array(sorted(store.countries.index))
     panel = store.panel(origin, first, L, countries=countries)
@@ -93,9 +108,9 @@ def run_origin(store: VintageStore, history: pd.DataFrame, origin: pd.Timestamp,
 
 
 def final_view(store: VintageStore, countries: np.ndarray, first: int, last: int,
-               target: str) -> np.ndarray:
-    """The same window seen through the newest final release (the leaky retrospective view)."""
-    truth, _ = store.truth()
+               target: str, truth_name: str) -> np.ndarray:
+    """The same window seen through a pinned final release (the leaky retrospective view)."""
+    truth, _ = store.truth(truth_name)
     t = truth[target].reset_index()
     t = t[(t["m"] >= first) & (t["m"] <= last)]
     v = t.pivot(index="country_id", columns="m", values=target)

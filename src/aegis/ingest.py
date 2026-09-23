@@ -30,7 +30,8 @@ CUMULATIVE_RE = re.compile(r"candidateged/GEDEvent_v(\d{2})_01_\d{2}_(\d{2})\.cs
 FINAL_RE = re.compile(r"ged/ged(\d{3})-csv\.zip")
 
 # If Last-Modified is more than this long after the nominal release date, the file was
-# probably re-uploaded; fall back to the rule-based date instead of hiding the release.
+# probably re-uploaded. The release is still dated by Last-Modified (never backdated),
+# but flagged "last-modified-late" so reports can say which vintages were lost.
 REUPLOAD_TOLERANCE = dt.timedelta(days=60)
 
 
@@ -43,7 +44,7 @@ class Release:
     cover_end: str       # last month covered (YYYY-MM)
     nominal: str         # rule-based availability date (YYYY-MM-DD)
     available: str = ""  # date AEGIS treats the release as known from
-    date_source: str = ""  # "last-modified" | "rule"
+    date_source: str = ""  # see resolve_available()
     last_modified: str = ""
     sha256: str = ""
     bytes: int = 0
@@ -111,21 +112,45 @@ def discover(client: httpx.Client) -> list[Release]:
 
 
 def resolve_available(rel: Release, last_modified: dt.datetime | None) -> tuple[str, str]:
-    """Pick the date from which a release counts as known.
+    """Pick the date from which a release's *content as downloaded* counts as known.
 
-    Last-Modified is an upper bound on when a file first appeared, so using it can only
-    make AEGIS *more* conservative (it never leaks a release early). A Last-Modified far
-    after the nominal date usually means a re-upload, in which case the rule date is used.
+    Changed content is never backdated. Last-Modified is when the bytes we hold were
+    last written, so the content is treated as available from then, even when UCDP
+    probably published an earlier version of the same file sooner. A late Last-Modified
+    therefore costs vintages (the release appears later than it really did) but can never
+    leak a revision into an earlier origin.
+
+    Returns (date, source) where source is:
+      "last-modified"         Last-Modified is close to the nominal release date
+      "last-modified-late"    Last-Modified is well after it: probably a re-upload
+      "rule-unverified"       no Last-Modified header; nominal date used and flagged
     """
     nominal = dt.date.fromisoformat(rel.nominal)
     cover_end_y, cover_end_m = map(int, rel.cover_end.split("-"))
     ey, em = _month_add(cover_end_y, cover_end_m, 1)
     earliest = dt.date(ey, em, 1)  # cannot be published before its coverage ends
     if last_modified is not None:
-        lm = last_modified.date()
-        if earliest <= lm <= nominal + REUPLOAD_TOLERANCE:
-            return lm.isoformat(), "last-modified"
-    return max(nominal, earliest).isoformat(), "rule"
+        lm = max(last_modified.date(), earliest)
+        late = lm > nominal + REUPLOAD_TOLERANCE
+        return lm.isoformat(), "last-modified-late" if late else "last-modified"
+    return max(nominal, earliest).isoformat(), "rule-unverified"
+
+
+def redate(manifest: dict[str, dict]) -> int:
+    """Re-apply the availability policy to every release already in the manifest.
+
+    Availability is derived from recorded metadata, so a policy change must not require
+    re-downloading. Returns how many releases changed date.
+    """
+    changed = 0
+    for row in manifest.values():
+        rel = Release(**{k: row.get(k, "") for k in Release.__dataclass_fields__})
+        lm = dt.datetime.fromisoformat(row["last_modified"]) if row.get("last_modified") else None
+        available, source = resolve_available(rel, lm)
+        if (available, source) != (row["available"], row["date_source"]):
+            row["available"], row["date_source"] = available, source
+            changed += 1
+    return changed
 
 
 def load_manifest() -> dict[str, dict]:
@@ -186,6 +211,9 @@ def sync(progress: Callable[[str], None] = print, only: Iterable[str] | None = N
     """Fetch every wanted release not already in the store. Returns manifest rows."""
     config.ensure_dirs()
     manifest = load_manifest()
+    if n := redate(manifest):
+        save_manifest(manifest)
+        progress(f"availability policy re-applied: {n} releases re-dated")
     with httpx.Client(timeout=httpx.Timeout(30.0, read=300.0), follow_redirects=True) as client:
         releases = discover(client)
         if only:

@@ -5,7 +5,7 @@ binomials when the inputs themselves are uncertain (nowcast draws). Scores are c
 on the exact probability mass function, not on samples:
 
 * CRPS for integer outcomes: sum_k (F(k) - 1{y <= k})^2
-* log score: -log p(y)
+* log score: -log p(y), computed in log space (no probability floor)
 * Brier score for the event "at least one event": (P(Y > 0) - 1{y > 0})^2
 * central 80% interval coverage and a randomised PIT value for calibration plots
 """
@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 from scipy.optimize import minimize_scalar
+from scipy.special import logsumexp
 
 MU_FLOOR = 1e-3
 TAIL = 1e-7  # probability mass allowed beyond the evaluation grid
@@ -62,13 +63,18 @@ class CountForecast:
     def p_positive(self) -> float:
         return float(1.0 - self.cdf(np.array([0]))[0])
 
+    def logpmf(self, y: int) -> float:
+        """log p(y) for the mixture, via logsumexp: exact, with no floor or underflow."""
+        lp = nb(self.mus, self.alpha).logpmf(y)
+        return float(logsumexp(lp) - np.log(len(self.mus)))
+
     def score(self, y: int, rng: np.random.Generator | None = None) -> dict[str, float]:
         y = int(y)
         k = self._grid(y)
         p = self.pmf(k)
         c = np.cumsum(p)
         crps = float(np.sum((c - (k >= y)) ** 2))
-        logs = float(-np.log(max(p[y], 1e-12)))
+        logs = -self.logpmf(y)
         p0 = float(p[0])
         brier = float(((1 - p0) - (y > 0)) ** 2)
         lo = int(k[np.searchsorted(c, 0.1)])

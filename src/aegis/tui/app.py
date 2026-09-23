@@ -180,12 +180,12 @@ class HealthPanel(Static):
                 g.add_row("here: baseline", bar(cb["nbar"], top_c, 12, "#9aa5b1"), f"{cb['nbar']:.2f}")
                 g.add_row("here: AEGIS", bar(cb["nbar+vis"], top_c, 12, ACCENT), f"{cb['nbar+vis']:.2f}")
             parts.append(g)
-            d = bt["paper2_visibility"]["active_crps"]
+            d = bt["paper2_visibility"]["primary_active_crps"]
             if d.get("n"):
                 lo, hi = d["ci95"]
                 verdict = ("AEGIS better" if hi < 0 else "baseline better" if lo > 0
                            else "no significant difference")
-                parts.append(Text(f"Δ {d['mean_diff']:+.3f}  95% CI [{lo:+.3f}, {hi:+.3f}]  → {verdict}",
+                parts.append(Text(f"Δ {d['mean_diff']:+.3f}  95% CI [{lo:+.3f}, {hi:+.3f}] (6-mo blocks) → {verdict}",
                                   style=DIM))
             nc = bt.get("nowcast", {}).get("1") or bt.get("nowcast", {}).get(1)
             if nc:

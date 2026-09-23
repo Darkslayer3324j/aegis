@@ -97,6 +97,18 @@ class VintageStore:
         finals = self.available(asof, "final")
         return finals[-1] if finals else None
 
+    def covered(self, asof: Date, months: np.ndarray) -> np.ndarray:
+        """Which of ``months`` some release available at ``asof`` actually covers.
+
+        An uncovered month is *unknown*, not zero. It arises before the first Candidate
+        release, or when a release is dated late (e.g. a re-upload).
+        """
+        months = np.asarray(months)
+        ok = np.zeros(len(months), dtype=bool)
+        for r in self.available(asof):
+            ok |= (months >= r.cover_start) & (months <= r.cover_end)
+        return ok
+
     def last_data_month(self, asof: Date) -> int | None:
         """Most recent month with a monthly Candidate release available at ``asof``."""
         monthly = self.available(asof, "monthly")

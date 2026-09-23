@@ -90,11 +90,13 @@ def forecast(asof: Optional[str] = typer.Option(None, help="Forecast as of this 
 def backtest(start: str = typer.Option("2022-06-01", help="First forecast origin."),
              end: Optional[str] = typer.Option(None, help="Last forecast origin."),
              target: str = typer.Option("events", help="events or deaths"),
-             draws: int = typer.Option(40, help="Nowcast draws per forecast.")) -> None:
-    """Walk-forward evaluation on historical vintages, scored against final data."""
+             draws: int = typer.Option(40, help="Nowcast draws per forecast."),
+             truth: Optional[str] = typer.Option(None, help="Final release to score against, e.g. final-26.1 "
+                                                             "(default: newest; always recorded with its hash).")) -> None:
+    """Walk-forward evaluation on historical vintages, scored against a pinned final release."""
     from . import backtest as bt
 
-    out = bt.run(start=start, end=end, target=target, draws=draws, progress=_say)
+    out = bt.run(start=start, end=end, target=target, draws=draws, truth=truth, progress=_say)
     console.print(Markdown((out / "report.md").read_text(encoding="utf-8")))
 
 
