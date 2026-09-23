@@ -29,7 +29,7 @@ data that existed at the time of each forecast.
 | 3. Observation model | Estimated completeness per country and vintage age, learned from past revision pairs |
 | 4. Nowcast | Negative-binomial nowcast of each recent month's eventual count |
 | 5. Forecast | `naive`, `ma6`, `nbar` (level-anchored NB autoregression) and `nbar+vis` (AEGIS) |
-| 6. Calibration | CRPS, log score, Brier, 80% coverage, PIT, origin-block bootstrap |
+| 6. Calibration | CRPS, exact log score, Brier, 80% coverage, PIT, moving-block bootstrap over origins |
 | 7. Research monitor | `aegis backtest` report; baseline vs AEGIS in the interface |
 | 8. Interface | Terminal UI (`aegis`); 3D globe deferred until the results hold up |
 
@@ -95,10 +95,13 @@ date:
 3. Monthly releases published after that add late events.
 4. Nothing published after `asof` is read. `tests/test_vintage.py` enforces this.
 
-A release counts as available from its HTTP `Last-Modified` date. That date is an upper
-bound on first publication, so it can only make AEGIS more conservative. If a file was
-re-uploaded long after release, a rule-based date is used instead and flagged in
-`aegis status`.
+A release counts as available from its HTTP `Last-Modified` date. Content is never
+backdated: a file re-uploaded long after its nominal release date is dated by the
+re-upload and flagged `last-modified-late` in `aegis status`. This costs vintages but
+can never leak a revision into an earlier origin. A month that no available release
+covers is treated as unknown, not zero, and an origin with such a gap is skipped.
+Vintages are day-level: a release counts as known from the start of its availability
+date.
 
 ### Observation model
 
@@ -149,20 +152,27 @@ Forecast origins are the dates on which each monthly Candidate release appeared.
 - Every model is scored against the newest final release.
 - The same models are also run on the final data ("final view"). This is the usual, leaky
   retrospective setup; Paper 1 compares the two views.
-- Differences between models are paired, with 95% intervals from a bootstrap over whole
-  origins.
+- Truth is pinned (`--truth final-26.1`) and recorded with its SHA-256 and the code commit.
+- Differences between models are paired. 95% intervals come from a moving-block bootstrap
+  over consecutive origins (6-month blocks; 3 and 9 as sensitivity). The effective sample
+  size is the number of origins, not the number of forecasts.
+- `tests/test_end_to_end.py` checks that a store truncated at the origin and the full
+  store (plus a fake future revision and final) give identical forecasts.
 
 ## Results
 
 See [RESULTS.md](RESULTS.md) for the current backtest and what it does and does not show.
+The v0.2 evaluation rules, fixed before any v0.2 code exists, are in
+[PROTOCOL.md](PROTOCOL.md).
 
 ## Known limitations
 
 - **UCDP only.** Counts are UCDP events of organised violence (at least one death),
   aggregated to country-month. Sub-national cells come later.
-- **Five 2022 releases (22.06–22.09 and the H1 cumulative file) were re-uploaded on
-  20 December 2022.** AEGIS dates them by the release rule. If the re-upload changed
-  their content, a few months of 2022 origins may see slightly revised data.
+- **UCDP re-uploaded the mid-2022 releases (22.06–22.11) on 20 December 2022.** They are
+  dated by the re-upload, so origins from July to November 2022 do not exist in the
+  backtest. The true first-publication content of those releases is not recoverable
+  from UCDP's archive.
 - **Candidate 24.0.1 was published without a header row.** Standard GED columns are
   assumed; the release is flagged.
 - **Truth is `final-26.1`, covering data through December 2025.** Origins after November
