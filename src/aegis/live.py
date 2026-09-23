@@ -104,9 +104,12 @@ def load() -> LiveState:
         d = config.RESULTS / pointer.read_text(encoding="utf-8").strip()
         if (d / "summary.json").exists():
             bt = json.loads((d / "summary.json").read_text(encoding="utf-8"))
-            s = pd.read_parquet(d / "scores.parquet", columns=["regime", "model", "country_id", "crps"])
+            s = pd.read_parquet(d / "scores.parquet", columns=["regime", "model", "country_id", "crps", "in80"])
             s = s[(s["regime"] == "vintage") & s["model"].isin(["nbar", "nbar+vis"])]
             by_c = s.pivot_table(index="country_id", columns="model", values="crps", aggfunc="mean")
+            vis = s[s["model"] == "nbar+vis"].groupby("country_id")["in80"]
+            by_c["miss"] = 1.0 - vis.mean()
+            by_c["n"] = vis.size()
     return LiveState(
         meta=meta,
         countries=pd.read_parquet(LIVE_DIR / "countries.parquet"),

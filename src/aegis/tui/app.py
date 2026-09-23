@@ -16,9 +16,10 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import DataTable, Footer, Input, Static
+from textual.widgets import DataTable, Footer, Input, Static, TabbedContent, TabPane
 
 from .. import config
+from .. import evidence
 from ..live import LiveState
 from .braille import BrailleCanvas, load_land
 
@@ -96,10 +97,13 @@ class CountryPanel(Static):
         vmax = max(f1, row["base_h1"], row["nowcast_last"], 1.0) * 1.25
         grid.add_row(Text("FORECAST (next month)", style=DIM), Text("VISIBILITY (newest month)", style=DIM),
                      Text("DECISION", style=DIM))
-        grid.add_row(Text(f"{f1:,.1f} events", style="bold"), Text(f"{vis:.0%}", style=f"bold {sstyle}"),
-                     Text(status, style=f"bold {sstyle}"))
-        grid.add_row(bar(f1, vmax), bar(min(vis, 1.0), 1.0, style=sstyle),
-                     Text(f"80%: {int(row['aegis_h1_lo'])}–{int(row['aegis_h1_hi'])}", style=DIM))
+        abstain = status == "ABSTAIN"
+        grid.add_row(Text("not estimated" if abstain else f"{f1:,.1f} events", style="bold"),
+                     Text(f"{vis:.0%}", style=f"bold {sstyle}"), Text(status, style=f"bold {sstyle}"))
+        grid.add_row(Text("reporting impaired", style=sstyle) if abstain else bar(f1, vmax),
+                     bar(min(vis, 1.0), 1.0, style=sstyle),
+                     Text("" if abstain else f"80%: {int(row['aegis_h1_lo'])}–{int(row['aegis_h1_hi'])}",
+                          style=DIM))
 
         facts = Table.grid(padding=(0, 2))
         facts.add_column(style=DIM)
@@ -110,11 +114,12 @@ class CountryPanel(Static):
         facts.add_row("Est. completeness at age 1 / 2 / 3",
                       f"{row['C1']:.0%} / {row['C2']:.0%} / {row['C3']:.0%}")
         facts.add_row("Revision volatility (age 1)", f"{row['volatility']:.2f}")
-        facts.add_row("P(any event) next month", f"{row['aegis_h1_ppos']:.0%}")
-        facts.add_row("Horizons 1 / 2 / 3 (AEGIS)",
-                      f"{row['aegis_h1']:.1f} / {row['aegis_h2']:.1f} / {row['aegis_h3']:.1f}")
-        facts.add_row("Horizons 1 / 2 / 3 (baseline)",
-                      f"{row['base_h1']:.1f} / {row['base_h2']:.1f} / {row['base_h3']:.1f}")
+        if status != "ABSTAIN":
+            facts.add_row("P(any event) next month", f"{row['aegis_h1_ppos']:.0%}")
+            facts.add_row("Horizons 1 / 2 / 3 (AEGIS)",
+                          f"{row['aegis_h1']:.1f} / {row['aegis_h2']:.1f} / {row['aegis_h3']:.1f}")
+            facts.add_row("Horizons 1 / 2 / 3 (baseline)",
+                          f"{row['base_h1']:.1f} / {row['base_h2']:.1f} / {row['base_h3']:.1f}")
 
         s = state.series[state.series["country_id"] == c]
         obs, now = s["observed"].to_numpy(), s["nowcast"].to_numpy()
@@ -129,8 +134,8 @@ class CountryPanel(Static):
         notes = []
         if status == "ABSTAIN":
             notes.append(Text("⚠ ABSTAINING: the reporting channel is impaired (low completeness or a "
-                              "silent feed after recent activity). The number above is shown for "
-                              "transparency, not as a confident forecast.", style=sstyle))
+                              "silent feed after recent activity), so AEGIS gives no number. "
+                              "Press e for the evidence.", style=sstyle))
         elif status == "WARN":
             notes.append(Text("⚠ VISIBILITY WARNING: recent observations are likely incomplete or "
                               "heavily revised.", style=sstyle))
@@ -139,6 +144,27 @@ class CountryPanel(Static):
                               "newest release. Quiet feed ≠ quiet world.", style=sstyle))
         self.update(Group(title, Text(""), grid, Text(""), facts, Text(""), spark_obs, spark_now, span,
                           Text(""), *notes))
+
+
+class EvidencePanel(Static):
+    """Plain-language 'why' summary. Wording rules: SCOPE.md; generator: aegis.evidence."""
+
+    def show(self, state: LiveState, row: pd.Series) -> None:
+        c = int(row["country_id"])
+        s = state.series[state.series["country_id"] == c]
+        track = None
+        if state.backtest_by_country is not None and c in state.backtest_by_country.index:
+            track = state.backtest_by_country.loc[c]
+        ev = evidence.build(row, s, track)
+        sstyle = STATUS_STYLE[ev.status]
+        parts = [Text(f" WHY: {ev.country.upper()} ", style=f"bold reverse {sstyle}"), Text(""),
+                 Text(ev.headline, style="bold"), Text("")]
+        for label, sentence in ev.points:
+            t = Text(f"{label}: ", style=f"bold {sstyle if label in ('Visibility', 'Silent feed') else ACCENT}")
+            t.append(sentence[0].upper() + sentence[1:])
+            parts.append(t)
+        parts += [Text(""), Text(ev.footer, style=f"italic {DIM}")]
+        self.update(Group(*parts))
 
 
 class HealthPanel(Static):
@@ -220,7 +246,8 @@ class AegisApp(App):
     #left { width: 56; border: round #243042; }
     #filter { height: 3; border: none; background: #111823; }
     #watch { height: 1fr; background: #0b0f14; }
-    #country { width: 1fr; border: round #243042; padding: 0 1; }
+    #tabs { width: 1fr; border: round #243042; }
+    #country, #evidence { padding: 0 1; }
     #health { width: 46; border: round #243042; padding: 0 1; overflow-y: auto; }
     """
     BINDINGS = [
@@ -228,6 +255,8 @@ class AegisApp(App):
         Binding("slash", "focus_filter", "Search"),
         Binding("s", "cycle_sort", "Sort"),
         Binding("a", "toggle_active", "Active only"),
+        Binding("e", "tab('tab-evidence')", "Why"),
+        Binding("o", "tab('tab-overview')", "Overview"),
         Binding("g", "globe", "Globe"),
         Binding("escape", "focus_table", "Table", show=False),
     ]
@@ -255,7 +284,11 @@ class AegisApp(App):
             with Vertical(id="left"):
                 yield Input(placeholder="/ filter countries", id="filter")
                 yield DataTable(id="watch", cursor_type="row", zebra_stripes=False)
-            yield CountryPanel(id="country")
+            with TabbedContent(id="tabs", initial="tab-overview"):
+                with TabPane("Overview", id="tab-overview"):
+                    yield CountryPanel(id="country")
+                with TabPane("Why (evidence)", id="tab-evidence"):
+                    yield EvidencePanel(id="evidence")
             yield HealthPanel(id="health")
         yield Footer()
 
@@ -290,7 +323,7 @@ class AegisApp(App):
                 Text(f"{int(r['obs_last'])}", justify="right"),
                 Text(f"{r['nowcast_last']:.0f}", justify="right"),
                 Text(f"{r['C1']:.0%}", style=style, justify="right"),
-                Text(f"{r['aegis_h1']:.0f}", justify="right"),
+                Text("—" if r["status"] == "ABSTAIN" else f"{r['aegis_h1']:.0f}", justify="right"),
                 Text(r["status"], style=style),
                 key=str(int(r["country_id"])),
             )
@@ -303,6 +336,7 @@ class AegisApp(App):
         row = row.copy()
         row["country_id"] = country_id
         self.query_one("#country", CountryPanel).show(self.state, row)
+        self.query_one("#evidence", EvidencePanel).show(self.state, row)
         self.query_one("#health", HealthPanel).show(self.state, row)
         self.query_one("#map", WorldMap).select(country_id)
 
@@ -332,6 +366,9 @@ class AegisApp(App):
         self.active_only = not self.active_only
         self.notify("active countries only" if self.active_only else "all countries")
         self.fill_table()
+
+    def action_tab(self, tab_id: str) -> None:
+        self.query_one("#tabs", TabbedContent).active = tab_id
 
     def action_globe(self) -> None:
         self.notify("The 3D globe comes after the research results hold up (see README roadmap).",

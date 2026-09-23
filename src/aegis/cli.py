@@ -119,6 +119,21 @@ def explain(country: str = typer.Argument(..., help="Country name (partial match
     cid = int(r["country_id"])
 
     console.rule(f"[bold]{r['country']}[/]  ·  {r['region']}  ·  status [bold]{r['status']}[/]")
+    from . import evidence
+
+    track = None
+    if state.backtest_by_country is not None and cid in state.backtest_by_country.index:
+        track = state.backtest_by_country.loc[cid]
+    ev = evidence.build(r, state.series[state.series["country_id"] == cid], track)
+    console.print()
+    console.print(f"[bold]{ev.headline}[/]")
+    console.print()
+    for label, sentence in ev.points:
+        console.print(f"[bold #7aa2f7]{label}:[/] {sentence[0].upper() + sentence[1:]}")
+    console.print()
+    console.print(f"[italic #6b7a8c]{ev.footer}[/]")
+    console.print()
+    console.rule("[#6b7a8c]research detail[/]")
     t = Table(show_header=False, box=None)
     t.add_column(style="#6b7a8c")
     t.add_column()

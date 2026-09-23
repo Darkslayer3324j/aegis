@@ -22,6 +22,9 @@ async def main(country: str) -> None:
         await pilot.press("slash", *country, "enter")
         await pilot.pause(0.5)
         app.save_screenshot(str(DOCS / f"tui_{country}.svg"))
+        await pilot.press("e")
+        await pilot.pause(0.5)
+        app.save_screenshot(str(DOCS / f"tui_{country}_evidence.svg"))
         await pilot.press("q")
 
 

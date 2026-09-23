@@ -17,6 +17,7 @@ data that existed at the time of each forecast.
 - for the selected country: what was reported, what the count is expected to become once
   reporting catches up, the forecast, and a visibility decision (`OK`, `WARN` or `ABSTAIN`);
 - a panel that always puts the simple baseline's backtest score next to AEGIS's.
+- a **Why (evidence)** tab: a plain-language summary of the evidence behind each number, with visibility first, AEGIS's own track record there, and no number at all when it abstains.
 
 ![AEGIS terminal interface](docs/tui.svg)
 
@@ -70,6 +71,7 @@ aegis
 | `/` | filter by name (Enter returns to the list) |
 | `s` | sort by forecast, visibility or status |
 | `a` | active countries only / all |
+| `e` / `o` | **Why (evidence)** tab / Overview tab |
 | `q` | quit |
 
 Other commands:
@@ -198,5 +200,7 @@ scope by design:
   GED and Hegre et al. (2020) for the Candidate dataset.
 - Map outline: Natural Earth (public domain).
 - No data is committed to this repository. `aegis sync` fetches it from the source.
+
+What AEGIS is and is not for, the dual-use stance and the Evidence wording rules: [SCOPE.md](SCOPE.md).
 
 Research background, prior-art review and the corrections log: [RESEARCH.md](RESEARCH.md).
