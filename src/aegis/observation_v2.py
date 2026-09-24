@@ -10,6 +10,7 @@ data is the only selection step (PROTOCOL.md §4).
   months are left as observed.
 * **V2**: robust, long memory. Per country and age, the median log revision ratio over
   all past pairs (no time decay), shrunk toward the global median.
+* **M2**: two-state visibility benchmark (see the M2 section below; PROTOCOL.md A4).
 * **V3g**: current reporting state from the reporting triangle. (Round 1 ran this under
   the name "V3", but it is *not* PROTOCOL.md's V3, the mean-reverting latent state model,
   which has not been built yet; see PROTOCOL.md deviation D1.) The growth of last month's
@@ -29,7 +30,7 @@ from . import observation as ob
 from .scoring import CountForecast, fit_alpha
 from .vintage import VintageStore
 
-CANDIDATES = ("V0", "V1", "V2", "V3g")
+CANDIDATES = ("V0", "V1", "V2", "V3g", "M2")
 V1_AGE_CAP = 6
 V2_SHRINK_MONTHS = 6.0
 V3_SHRINK_MONTHS = 6.0
@@ -182,14 +183,144 @@ def fit_v3(pairs: pd.DataFrame, history: pd.DataFrame, origin: pd.Timestamp, tar
     return m
 
 
+# --------------------------------------------------------------------------- M2
+# Two-state visibility benchmark (PROTOCOL.md amendment A4). Every threshold is fixed here,
+# before M2 has been run once.
+M2_LOW = 0.8                           # age-1 completeness below this = LOW state
+M2_MIN_FINAL = 5                       # states are only labelled when the final count >= 5
+M2_GROWTH_EDGES = (0.02, 0.15)         # buckets of first-to-second-release growth g
+M2_STATE_CLAMP = (0.2, 3.0)            # completeness bounds per state
+
+
+@dataclass
+class M2(_Base):
+    """Completeness is HIGH or LOW; the state is short-lived (RESULTS.md Table 5).
+
+    A month's true state is only known when its final count is published, far too late to
+    matter. So M2 infers it from a signal visible in real time: the growth g of a month's
+    count between its first and second release, bucketed and mapped to P(LOW | bucket).
+    The newest month has no second release yet; its P(LOW) is propagated one step through
+    the Markov chain from the previous month's. The nowcast is observed x E[1 / C] over
+    the two states, so it is always bounded between the two state levels; V3g had no such
+    bound and overshot.
+    """
+    base: V2                            # country long-run completeness (robust)
+    level: dict                         # (state, age) -> log completeness offset vs base
+    p_low_given_bucket: np.ndarray      # P(LOW | growth bucket 0, 1, 2)
+    p_ll: float                         # P(LOW next | LOW now)
+    p_hl: float                         # P(LOW next | HIGH now)
+    p_low_now: pd.Series                # (country_id, m) -> P(LOW) for months at the origin
+    L: int
+    alpha: pd.Series = field(default_factory=pd.Series)
+    n_pairs: int = 0
+
+    def _state_C(self, countries, a):
+        idx = pd.MultiIndex.from_arrays([np.asarray(countries, dtype=int), a])
+        lr = self.base.log_ratio.reindex(idx).to_numpy()
+        lr = np.where(np.isnan(lr), self.base.global_log_ratio.reindex(a).fillna(0.0).to_numpy(), lr)
+        lo_off = np.array([self.level.get(("LOW", int(x)), self.level.get(("LOW", ob.MAX_AGE), 0.0)) for x in a])
+        hi_off = np.array([self.level.get(("HIGH", int(x)), self.level.get(("HIGH", ob.MAX_AGE), 0.0)) for x in a])
+        c_lo = np.clip(np.exp(lr + lo_off), *M2_STATE_CLAMP)
+        c_hi = np.clip(np.exp(lr + hi_off), *M2_STATE_CLAMP)
+        return c_lo, c_hi
+
+    def nowcast_means(self, countries, ages, observed, p_low=None) -> np.ndarray:
+        countries = np.asarray(countries, dtype=int)
+        ages = np.asarray(ages)
+        a = ob.age_bucket(ages).astype(int)
+        if p_low is None:
+            months = self.L - ages + 1
+            key = pd.MultiIndex.from_arrays([countries, months])
+            denom = 1 - self.p_ll + self.p_hl
+            base_rate = self.p_hl / denom if denom > 0 else 0.25  # stationary P(LOW)
+            p_low = self.p_low_now.reindex(key).fillna(base_rate).to_numpy()
+        c_lo, c_hi = self._state_C(countries, a)
+        inv_c = p_low / c_lo + (1 - p_low) / c_hi
+        obs = np.asarray(observed, float)
+        zero = self.base.base.nowcast_means(countries, ages, np.zeros_like(obs))
+        return np.where(obs > 0, obs * inv_c, zero)
+
+
+def _bucket(g: np.ndarray) -> np.ndarray:
+    return np.digitize(np.asarray(g, float), M2_GROWTH_EDGES)
+
+
+def fit_m2(pairs: pd.DataFrame, history: pd.DataFrame, origin: pd.Timestamp, target: str,
+           base: V2) -> M2:
+    growth = growth_table(history[history["origin"] <= origin], target)
+
+    # 1. label age-1 states where the final count is known and large enough
+    a1 = pairs[(pairs["age"] == 1) & (pairs["final"] >= M2_MIN_FINAL)].drop_duplicates(["country_id", "m"])
+    state = pd.Series(np.where(a1["obs"] / a1["final"] < M2_LOW, "LOW", "HIGH"),
+                      index=pd.MultiIndex.from_arrays([a1["country_id"], a1["m"]]))
+
+    # 2. P(LOW | growth bucket), add-one smoothed
+    g = growth.reindex(state.index)
+    ok = g.notna()
+    b = _bucket(g[ok].to_numpy())
+    is_low = (state[ok] == "LOW").to_numpy()
+    p_bucket = np.array([(is_low[b == k].sum() + 1) / ((b == k).sum() + 2) for k in range(3)])
+
+    # 3. transitions between consecutive months
+    s = state.sort_index()
+    nxt = s.groupby(level=0).shift(-1)
+    months = s.index.get_level_values(1).to_numpy()
+    nxt_m = pd.Series(months, index=s.index).groupby(level=0).shift(-1).to_numpy()
+    consec = (nxt_m == months + 1) & nxt.notna().to_numpy()
+    cur, fut = s.to_numpy()[consec], nxt.to_numpy()[consec]
+    p_ll = ((cur == "LOW") & (fut == "LOW")).sum() / max((cur == "LOW").sum(), 1)
+    p_hl = ((cur == "HIGH") & (fut == "LOW")).sum() / max((cur == "HIGH").sum(), 1)
+
+    # 4. completeness level of each state, as an offset from the country's long-run level
+    pos = pairs[(pairs["obs"] > 0) & (pairs["final"] >= M2_MIN_FINAL)].copy()
+    pos["state"] = state.reindex(pd.MultiIndex.from_arrays([pos["country_id"], pos["m"]])).to_numpy()
+    pos = pos.dropna(subset=["state"])
+    idx = pd.MultiIndex.from_arrays([pos["country_id"].to_numpy(), pos["age_b"].to_numpy()])
+    base_lr = base.log_ratio.reindex(idx).to_numpy()
+    base_lr = np.where(np.isnan(base_lr), base.global_log_ratio.reindex(pos["age_b"]).fillna(0.0).to_numpy(), base_lr)
+    resid = np.log(pos["obs"] / pos["final"]).to_numpy() - base_lr
+    level = pd.Series(resid).groupby([pos["state"].to_numpy(), pos["age_b"].to_numpy()]).median().to_dict()
+
+    # 5. P(LOW) for months at the origin: own growth signal where it exists (age >= 2),
+    #    Markov step from the previous month for the newest month
+    cur_hist = history[history["origin"] <= origin]
+    L = int(cur_hist["L"].max())
+    p_now = {}
+    countries = cur_hist["country_id"].unique()
+    for c in countries:
+        for mm in range(L - ob.MAX_AGE, L):
+            gv = growth.get((c, mm))
+            if gv is not None and np.isfinite(gv):
+                p_now[(c, mm)] = p_bucket[_bucket([gv])[0]]
+        prev = p_now.get((c, L - 1))
+        if prev is not None:
+            p_now[(c, L)] = prev * p_ll + (1 - prev) * p_hl
+    p_low_now = pd.Series(p_now, dtype=float)
+    if len(p_low_now):
+        p_low_now.index = pd.MultiIndex.from_tuples(p_low_now.index)
+
+    m = M2(base=base, level=level, p_low_given_bucket=p_bucket, p_ll=float(p_ll), p_hl=float(p_hl),
+           p_low_now=p_low_now, L=L, n_pairs=len(pairs))
+    # dispersion, fitted on in-sample nowcasts using each pair's own state probability
+    key = pd.MultiIndex.from_arrays([pairs["country_id"].to_numpy(), pairs["m"].to_numpy()])
+    gp = growth.reindex(key).to_numpy()
+    stationary = p_hl / (1 - p_ll + p_hl) if (1 - p_ll + p_hl) > 0 else 0.25
+    p_pair = np.where(np.isfinite(gp), p_bucket[_bucket(np.nan_to_num(gp))], stationary)
+    mu = m.nowcast_means(pairs["country_id"], pairs["age_b"], pairs["obs"], p_low=p_pair)
+    m.alpha = _alpha_by_age(pairs, np.maximum(mu, 1e-3))
+    return m
+
+
 def fit_all(history: pd.DataFrame, store: VintageStore, origin: pd.Timestamp,
             target: str = "events") -> dict:
     """V0 (the v0.1 estimator) plus the v0.2 candidates, all fitted at ``origin``."""
     v0 = ob.fit(history, store, origin, target)
     pairs, _ = ob.training_pairs(history, store, origin, target)
+    v2 = fit_v2(pairs, v0)
     return {
         "V0": v0,
         "V1": V1(v0),
-        "V2": fit_v2(pairs, v0),
+        "V2": v2,
         "V3g": fit_v3(pairs, history, origin, target),
+        "M2": fit_m2(pairs, history, origin, target, v2),
     }
