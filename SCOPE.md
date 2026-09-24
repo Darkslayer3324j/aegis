@@ -85,6 +85,42 @@ The owner asked for a view to "see and monitor the location in depth". "In depth
 at these limits; district-, city- or event-level drill-down needs a new dual-use review
 first.
 
+## Integrating other open-source projects (council decision, 24 September 2026)
+
+The owner asked to "implement features from all of these repositories and the entirety
+of god's eye". A five-advisor council reviewed the list of about 35 repositories against
+this scope, the licences, and the goal of running on any computer.
+
+| Decision | Repositories | Reason |
+|---|---|---|
+| **Adopt now** (optional extras, CPU-only, pip-installable) | StatsForecast (`[baselines]`); MAPIE later if interval calibration needs it | Permissive; serve the existing goal of stronger baselines and calibration |
+| **Later, opt-in**, only after the core passes readiness test 2 for the world | PyMC, sktime, Darts (no torch), MapLibre or deck.gl (bundled JS), pystac-client and Rasterio for *country-level* covariates only (e.g. night lights), the Google CAP library (forecasts labelled as forecasts) | Useful, but add surface area before the core claim holds |
+| **Not in AEGIS: licence** | worldmonitor (AGPL-3.0), Grafana (AGPL-3.0), ntopng (GPL-3.0), NetAlertX (GPL-3.0), Suricata (GPL-2.0) | Copying them in would force relicensing. They can be studied, or run as separate programs |
+| **Not in AEGIS: surveillance or dual use** | Traccar, OwnTracks, Sniffnet | Track individual devices or people; contrary to "no individuals, no tracking" above |
+| **Not in AEGIS: a different project** | Zeek, OpenTelemetry, Prometheus, Alertmanager; CesiumJS, kepler.gl, OpenLayers; TorchGeo, TerraTorch, Open-CD, NeuralForecast, GluonTS; GDAL, Satpy, eo-learn, stackstac, geemap | Operations infrastructure, duplicate globes, GPU-dependent models, or heavy geospatial stacks that conflict with "runs on any computer" |
+
+Zeek on a network *you own* is legitimate defensive security, and a good separate project.
+It is not part of a conflict forecaster. Satellite change detection over populated areas
+would likewise need its own scope and dual-use review.
+
+## Runs on any computer
+
+The owner's requirement (24 September 2026): AEGIS must not depend on the developer's
+machine.
+
+- **Install:** plain `pip`, `pipx` or `uv tool install`. No Docker, no WSL, no GPU, no
+  compiler. Prebuilt wheels only.
+- **Size:** the core install measured **334 MB** in a clean environment. Nearly all of it
+  is scipy, pyarrow and statsmodels; AEGIS itself is under 1 MB. The data is about
+  450 MB, downloaded once, and its size is shown before the first sync.
+- **Data folder:** `%LOCALAPPDATA%egis` (Windows), `~/Library/Application Support/aegis`
+  (macOS), `~/.local/share/aegis` (Linux), or `AEGIS_HOME`. Never inside the installed
+  package.
+- **The globe works offline:** its JavaScript and texture are bundled (MIT and public
+  domain; see THIRD_PARTY_NOTICES.md).
+- **CI:** `.github/workflows/ci.yml` tests Windows, macOS and Linux on Python 3.11–3.13
+  from a clean install. It runs once the repository is on GitHub.
+
 ## Evidence panel wording rules
 
 The per-country "why" summary must:

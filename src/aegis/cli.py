@@ -6,6 +6,7 @@
     aegis backtest        vintage-aware walk-forward evaluation
     aegis explain <name>  the evidence behind one country's numbers
     aegis globe           3D globe in the browser, served locally
+    aegis explore         exploratory StatsForecast baselines (optional extra)
     aegis status          what is in the store
     aegis verify          re-hash every raw file against the manifest
 """
@@ -66,7 +67,7 @@ def open_interface(scope: str = "world") -> None:
     from .tui.app import run
 
     if not config.MANIFEST.exists():
-        _say("no data yet: running first sync (downloads ~450 MB of UCDP releases once)")
+        _say(f"no data yet: running first sync (about {config.FIRST_SYNC_MB} MB, once, into {config.HOME})")
         sync()
     try:
         state = live.load(scope)
@@ -82,6 +83,8 @@ def sync(refresh: bool = typer.Option(True, help="Recompute today's forecast aft
     """Download new UCDP Candidate and GED releases into the immutable vintage store."""
     from . import ingest, live
 
+    if not config.MANIFEST.exists():
+        _say(f"first sync: downloads about {config.FIRST_SYNC_MB} MB of UCDP releases into {config.HOME}")
     ingest.sync(progress=_say)
     ingest.fetch_land(progress=_say)
     if refresh:
@@ -211,6 +214,30 @@ def explain(country: str = typer.Argument(..., help="Country or province name (p
     console.print(tt)
     console.print("\n[#6b7a8c]Source: UCDP Candidate & GED (CC BY 4.0). Counts are UCDP events of organised "
                   "violence (≥1 death), aggregated to country-month.[/]")
+
+
+@app.command()
+def explore(scope: str = SCOPE_OPT,
+            truth: str = typer.Option("final-26.1", help="Final release to score against.")) -> None:
+    """Exploratory: StatsForecast baselines on the backtest's origins (never decides a pass)."""
+    try:
+        from . import explore as ex
+    except ImportError:
+        _say("needs the optional extra: pip install 'aegis-forecast[baselines]'")
+        raise typer.Exit(1)
+    try:
+        out = ex.baselines(truth=truth, scope=_check_scope(scope), progress=_say)
+    except ModuleNotFoundError:
+        _say("needs the optional extra: pip install 'aegis-forecast[baselines]'")
+        raise typer.Exit(1)
+    t = Table(title=f"Exploratory baselines ({scope}), active {'countries' if scope == 'world' else 'units'}")
+    for col in ("model", "CRPS", "vs nbar [95% CI]", "log", "cov80"):
+        t.add_column(col)
+    for m, r in out["models"].items():
+        t.add_row(m, f"{r['crps']:.3f}", f"{r['diff_vs_nbar']:+.3f} [{r['ci95'][0]:+.3f}, {r['ci95'][1]:+.3f}]",
+                  f"{r['logs']:.3f}", f"{r['cov80']:.1%}")
+    console.print(t)
+    _say(out["note"])
 
 
 @app.command()

@@ -1,16 +1,44 @@
-"""Paths and source URLs. Override the data root with the AEGIS_HOME environment variable."""
+"""Paths and source URLs.
+
+Where AEGIS keeps its data (``data/``) and results (``results/``):
+
+1. ``AEGIS_HOME``, if set;
+2. the source checkout, when running from a clone (``pyproject.toml`` next to ``src/``);
+3. otherwise the per-user data folder of the operating system:
+   ``%LOCALAPPDATA%\\aegis`` on Windows, ``~/Library/Application Support/aegis`` on macOS,
+   ``$XDG_DATA_HOME/aegis`` or ``~/.local/share/aegis`` elsewhere.
+
+Never inside the installed package: an installed copy must not write into site-packages.
+"""
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
-HOME = Path(os.environ.get("AEGIS_HOME", Path(__file__).resolve().parents[2] / "data"))
+
+def _base() -> Path:
+    if os.environ.get("AEGIS_HOME"):
+        return Path(os.environ["AEGIS_HOME"]).expanduser()
+    checkout = Path(__file__).resolve().parents[2]
+    if (checkout / "pyproject.toml").exists() and (checkout / "src" / "aegis").is_dir():
+        return checkout
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "aegis"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "aegis"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "aegis"
+
+
+BASE = _base()
+HOME = BASE / "data"
 RAW = HOME / "raw"          # downloaded files, never modified after download
 STORE = HOME / "store"      # parquet copies of the raw files, one per release
 MANIFEST = HOME / "manifest.json"
-RESULTS = HOME.parent / "results"
+RESULTS = BASE / "results"
 GEO = HOME / "geo"
+FIRST_SYNC_MB = 450         # shown to the user before the first download
 
 UCDP_BASE = "https://ucdp.uu.se/downloads/"
 UCDP_INDEX_PAGES = ["https://ucdp.uu.se/downloads/", "https://ucdp.uu.se/downloads/olddw.html"]

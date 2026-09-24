@@ -211,6 +211,12 @@ class Handler(BaseHTTPRequestHandler):
                                                         f"`aegis forecast --scope {scope}`"}).encode(),
                                       "application/json")
                 return self._send(200, body, "application/json")
+            if url.path.startswith("/static/"):
+                name = url.path.rsplit("/", 1)[1]
+                types = {"globe.gl.min.js": "text/javascript", "earth-dark.jpg": "image/jpeg"}
+                if name not in types:  # only the two bundled assets
+                    return self._send(404, b"not found", "text/plain")
+                return self._send(200, (STATIC / name).read_bytes(), types[name])
             if url.path.startswith("/geo/"):
                 name = url.path.rsplit("/", 1)[1]
                 allowed = {WORLD_POLYGONS} | {s["boundaries"] for s in config.SCOPES.values() if "boundaries" in s}

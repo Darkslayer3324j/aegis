@@ -5,6 +5,14 @@ description = "Visibility-aware probabilistic conflict forecasting under delayed
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+keywords = ["forecasting", "conflict", "nowcasting", "calibration", "early-warning"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
 authors = [{ name = "Syed Muhammad Nafay Hassan Rizvi", email = "nafayhassan3324j@gmail.com" }]
 dependencies = [
     "httpx>=0.27",
@@ -19,6 +27,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Exploratory stronger baselines (`aegis explore`). Not needed to run AEGIS.
+baselines = ["statsforecast>=2.1"]
 
 [project.scripts]
 aegis = "aegis.cli:app"

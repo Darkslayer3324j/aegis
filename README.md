@@ -59,7 +59,33 @@ publication timestamp).
 
 ## Install
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/) (or pip).
+Runs on Windows, macOS and Linux with Python 3.11+. It needs no GPU, no Docker and no
+compiler.
+
+**Minimum:** 4 GB RAM, about 800 MB of disk (334 MB of packages plus about 450 MB of
+data).
+
+From a copy of the repository, as a command available everywhere:
+
+```bash
+uv tool install .
+```
+
+or, with pip in a virtual environment:
+
+```bash
+pip install .
+```
+
+Optional exploratory baselines: `pip install ".[baselines]"`.
+
+Data goes to your per-user folder, not the install folder: `%LOCALAPPDATA%egis`,
+`~/Library/Application Support/aegis` or `~/.local/share/aegis`. Set `AEGIS_HOME` to use
+another location.
+
+### For development
+
+Requires [uv](https://docs.astral.sh/uv/) (or pip).
 
 ```bash
 uv venv --python 3.12 .venv

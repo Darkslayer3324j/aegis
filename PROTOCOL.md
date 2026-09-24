@@ -55,6 +55,8 @@ results use this nested procedure, never a single global fit tuned on all outer 
 | V3g | *(added after round 1; see deviation D1)* reporting-triangle growth regression: log((final + 1)/(obs + 1)) ~ 1 + country prior + g + 1{obs = 0}, where g is last month's growth from first to second release |
 | M2 | *(added 24 Sep 2026, before it has run: amendment A4)* two-state visibility benchmark. Each country-month is LOW (age-1 completeness < 0.8) or HIGH. Transition probabilities P(LOW→LOW), P(HIGH→LOW) and a completeness level per state are estimated from past pairs. The correction applies the expected completeness given the most recently *observable* state. This is the simplest direct test of "visibility is a short-lived state" (RESULTS.md Table 5), and must be run before V3 and V4 |
 
+| V5 | *(registered 24 Sep 2026, before it has been built: amendment A5)* coverage-shift aware. Per country, a change point in the age-1 log revision ratio is detected with a two-sided CUSUM (threshold h = 4 standard deviations, drift k = 0.5, on the country's own residuals from its running median). Completeness is then estimated only from pairs **after** the most recent detected change point; with fewer than 6 such pairs, shrink toward the global estimate. Motivated by exploratory evidence that UCDP expanded Brazil's first-release coverage from 11% (2021) to 88% (2023–24), which v0.1–M2 all carried forward |
+
 **Selection rule (amendment A2, fixed before any candidate has passed):**
 - **0 candidates pass §5:** nothing is carried. `nbar` remains the default, and no
   confirmation run is presented as a success test.
@@ -122,6 +124,7 @@ them can change a result that was already reported.
 | D1 | 24 Sep 2026 | **Deviation found:** round 1's "V3" was a reporting-triangle growth regression, not the mean-reverting latent state model registered as V3 above. It is renamed **V3g** everywhere. The registered V3 has not been run. | — | Round 1 V3 numbers are V3g's; RESULTS.md relabelled |
 | F1 | 24 Sep 2026 | **Integrity fix:** the country universe was taken from the whole store, so a country first appearing after an origin entered that origin's forecasts, historical training panel and observation model. Now origin-aware (`countries_at`), with a mutation-checked test | Round 1 | Round 1 is re-run (round 1b) on the fixed code; the round 1 numbers in RESULTS.md are superseded |
 | F2 | 24 Sep 2026 | Bootstrap blocks no longer wrap from the last origin to the first | Round 1 | Intervals re-computed in round 1b |
+| A5 | 24 Sep 2026 | Candidate V5 (coverage-shift aware) registered, with fixed thresholds, before it was built | Round 1b and the exploratory per-country breakdown (Brazil) | V5 has not run; it goes into round 2. **Known risk:** V5 was motivated by looking at development data, so its round-2 development result is optimistic by construction. Only the confirmation run counts |
 
 ## 8. Development log
 

@@ -4,14 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AEGIS Globe</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/globe.gl@2.34.4/dist/globe.gl.min.js"></script>
+<!-- Bundled locally (MIT, see THIRD_PARTY_NOTICES.md) so the globe works offline and behind CDN blocks. -->
+<script src="/static/globe.gl.min.js"></script>
 <style>
   :root {
     --bg: #0b0f14; --panel: rgba(13,19,28,.88); --line: #243042; --text: #c0caf5; --dim: #6b7a8c;
     --accent: #7aa2f7; --ok: #3fc1b0; --warn: #e6b450; --abstain: #ff5f56; --grey: #2a3646;
-    --mono: "JetBrains Mono", ui-monospace, monospace; --sans: Inter, system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; --sans: system-ui, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); overflow: hidden; }
@@ -131,7 +130,7 @@ let data = null, features = [], byGeo = new Map(), selected = null;
 
 const world = Globe()(document.getElementById("globe"))
   .backgroundColor("#0b0f14")
-  .globeImageUrl("https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-dark.jpg")
+  .globeImageUrl("/static/earth-dark.jpg")
   .showAtmosphere(true).atmosphereColor("#3a6ea5").atmosphereAltitude(0.16)
   .polygonSideColor(() => "rgba(20,30,45,.55)")
   .polygonStrokeColor(() => "#2f4258")
@@ -176,10 +175,10 @@ function capColor(f) {
 function label(f) {
   const u = unitFor(f);
   const name = nameOf(f);
-  if (f.context) return `<div style="font:12px Inter;padding:4px 6px">${esc(name)}<br><span style="color:#6b7a8c">outside this view</span></div>`;
-  if (!u) return `<div style="font:12px Inter;padding:4px 6px">${esc(name)}<br><span style="color:#6b7a8c">no recorded organised violence in scope</span></div>`;
+  if (f.context) return `<div style="font:12px system-ui;padding:4px 6px">${esc(name)}<br><span style="color:#6b7a8c">outside this view</span></div>`;
+  if (!u) return `<div style="font:12px system-ui;padding:4px 6px">${esc(name)}<br><span style="color:#6b7a8c">no recorded organised violence in scope</span></div>`;
   const next = u.status === "ABSTAIN" ? "not estimated" : `${u.forecast[0].lo}–${u.forecast[0].hi} next month`;
-  return `<div style="font:12px Inter;padding:6px 8px;background:rgba(11,15,20,.92);border:1px solid #243042;border-radius:6px">
+  return `<div style="font:12px system-ui;padding:6px 8px;background:rgba(11,15,20,.92);border:1px solid #243042;border-radius:6px">
     <b>${esc(u.name)}</b> <span style="color:${COLORS[u.status]}">${esc(u.status)}</span><br>
     ${esc(next)}<br><span style="color:#6b7a8c">visibility ${Math.round(u.C1 * 100)}% · reported last month ${u.obs_last}</span></div>`;
 }
@@ -195,7 +194,7 @@ function renderGlobe() {
     .hexAltitude(d => 0.004 + 0.12 * Math.sqrt(d.sumWeight / maxN))
     .hexTopColor(d => `rgba(255,${Math.round(200 - 140 * Math.min(1, d.sumWeight / maxN))},90,0.85)`)
     .hexSideColor(() => "rgba(255,140,90,0.35)")
-    .hexLabel(d => `<div style="font:12px JetBrains Mono;padding:4px 6px;background:rgba(11,15,20,.92);border:1px solid #243042;border-radius:6px">${d.sumWeight} recorded events, last 3 months<br><span style="color:#6b7a8c">aggregated area (~${Math.round(data.cell_deg * 111)} km cells)</span></div>`);
+    .hexLabel(d => `<div style="font:12px ui-monospace,monospace;padding:4px 6px;background:rgba(11,15,20,.92);border:1px solid #243042;border-radius:6px">${d.sumWeight} recorded events, last 3 months<br><span style="color:#6b7a8c">aggregated area (~${Math.round(data.cell_deg * 111)} km cells)</span></div>`);
 }
 
 function renderList() {
