@@ -119,7 +119,7 @@ Four observation-model candidates, fixed before any result, were run on the same
   the forecasting model, not only in the correction itself.
 - **The mean CRPS is dominated by a few high-volume countries.** V3 is better than the
   baseline in 75% of countries and still loses on the mean. The primary metric stays as
-  agreed; see PROTOCOL.md §7 for how a change could be proposed honestly.
+  agreed; see PROTOCOL.md §8 for how a change could be proposed honestly.
 
 ## Pakistan provinces (national scope)
 

@@ -8,7 +8,7 @@ import pytest
 
 from aegis import ingest
 from aegis import observation as ob
-from aegis.backtest import block_bootstrap
+from aegis.backtest import block_bootstrap, block_indices, origins_for_targets
 from aegis.pipeline import CoverageGap, run_origin
 from aegis.scoring import CountForecast
 from aegis.vintage import ReleaseMeta, VintageStore, month_from_index, month_index
@@ -90,6 +90,31 @@ def test_future_releases_cannot_change_an_earlier_forecast():
             np.testing.assert_allclose(ma, mb, err_msg=f"{model} h={h} changed")
 
 
+def test_future_only_country_cannot_change_an_earlier_forecast():
+    """A country that first appears after the origin must not enter the forecast roster,
+    the historical training panel, or the observation model (review of revision 3)."""
+    origin = pd.Timestamp("2023-03-20")
+    full = synthetic_store()
+    extra = ReleaseMeta("cand-m-23.03", "monthly", pd.Timestamp("2023-04-20"), m("2023-03"), m("2023-03"))
+    later = [r for r in full.releases if r.name == "cand-m-23.03"]
+    rows = full.events[["id", "date_start", "date_end", "date_prec", "country_id", "country", "region",
+                        "type_of_violence", "best", "latitude", "longitude", "release"]].copy()
+    newcomer = pd.DataFrame([ev(90_000_000 + k, "2023-03-10", 42, release="cand-m-23.03") for k in range(30)])
+    with_new = VintageStore(pd.concat([rows, newcomer], ignore_index=True),
+                            full.releases if later else full.releases + [extra])
+    runs = []
+    for store in (truncated(full, origin), with_new):
+        hist = ob.build_history(store, store.origins())
+        runs.append(run_origin(store, hist, origin, draws=10, seed=3))
+    a, b = runs
+    assert 42 not in a.countries and 42 not in b.countries
+    assert a.obs_model.n_pairs == b.obs_model.n_pairs
+    for h in a.forecasts:
+        for model in a.forecasts[h]:
+            np.testing.assert_allclose([f.mean for f in a.forecasts[h][model]],
+                                       [f.mean for f in b.forecasts[h][model]], err_msg=f"{model} h={h}")
+
+
 def test_synthetic_underreporting_is_detected():
     store = synthetic_store()
     hist = ob.build_history(store, store.origins())
@@ -133,3 +158,20 @@ def test_block_bootstrap_widens_with_autocorrelation():
     w1 = np.ptp(np.quantile(block_bootstrap(per, 1), [0.025, 0.975]))
     w6 = np.ptp(np.quantile(block_bootstrap(per, 6), [0.025, 0.975]))
     assert w6 > 1.3 * w1
+
+
+def test_bootstrap_blocks_never_wrap():
+    idx = block_indices(38, 6, 2000, np.random.default_rng(0))
+    blocks = idx[:, :36].reshape(2000, 6, 6)          # the six full blocks of each resample
+    assert (np.diff(blocks, axis=2) == 1).all()        # every block is a consecutive run
+    assert idx.max() == 37 and idx.min() == 0
+
+
+def test_confirmation_window_is_defined_by_target_month():
+    store = synthetic_store()
+    lo, hi = m("2023-01"), m("2023-03")
+    origins = origins_for_targets(store, lo, hi)
+    Ls = [store.last_data_month(o) for o in origins]
+    # 2023-01 is reachable at h = 3 from L = 2022-10, so origins start there, not in 2023
+    assert min(Ls) == m("2022-10") and max(Ls) == m("2023-02")
+    assert all(any(lo <= L + h <= hi for h in (1, 2, 3)) for L in Ls)

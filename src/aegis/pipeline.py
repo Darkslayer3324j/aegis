@@ -19,7 +19,7 @@ from .vintage import VintageStore
 
 HORIZONS = (1, 2, 3)
 # Model name for each observation candidate. "nbar+vis" is V0, the v0.1 estimator.
-VIS_MODELS = {"V0": "nbar+vis", "V1": "nbar+V1", "V2": "nbar+V2", "V3": "nbar+V3"}
+VIS_MODELS = {"V0": "nbar+vis", "V1": "nbar+V1", "V2": "nbar+V2", "V3g": "nbar+V3g"}
 WINDOW = TRAIN_WINDOWS + LAGS_NEEDED + max(HORIZONS)
 
 # Visibility decision thresholds. Abstention follows from an impaired observation
@@ -53,7 +53,7 @@ class OriginRun:
     Y_draws: np.ndarray | None       # (countries, months, draws)
     is_final: np.ndarray             # (countries, months)
     obs_model: ob.ObservationModel   # V0: drives the visibility flags and completeness display
-    obs_models: dict                 # every candidate, keyed "V0".."V3"
+    obs_models: dict                 # every candidate, keyed by VIS_MODELS
     forecasts: dict[int, dict[str, list[CountForecast]]]
     status: pd.DataFrame             # per-country visibility state
 
@@ -86,7 +86,7 @@ def visibility_status(run_Y: np.ndarray, countries: np.ndarray, model: ob.Observ
 def run_origin(store: VintageStore, history: pd.DataFrame, origin: pd.Timestamp,
                target: str = "events", draws: int = 40, seed: int = 0,
                countries: np.ndarray | None = None,
-               candidates: tuple[str, ...] = ("V0", "V1", "V2", "V3")) -> OriginRun:
+               candidates: tuple[str, ...] = ("V0", "V1", "V2", "V3g")) -> OriginRun:
     L = store.last_data_month(origin)
     first = L - WINDOW + 1
     months = np.arange(first, L + 1)
@@ -94,7 +94,7 @@ def run_origin(store: VintageStore, history: pd.DataFrame, origin: pd.Timestamp,
     if len(gaps):
         raise CoverageGap(origin, gaps)
     if countries is None:
-        countries = np.array(sorted(store.countries.index))
+        countries = store.countries_at(origin)
     panel = store.panel(origin, first, L, countries=countries)
     Y = wide(panel, panel[target], countries, first, L)
     fin = wide(panel, panel["is_final"].astype(float), countries, first, L).astype(bool)

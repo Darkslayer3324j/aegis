@@ -157,9 +157,8 @@ class VintageStore:
                 if cover:
                     best_cum[m] = max(cover, key=lambda r: (r.available, r.name))
             cum_name = cand["m"].map({m: r.name for m, r in best_cum.items()})
-            cum_date = cand["m"].map({m: r.available for m, r in best_cum.items()}).fillna(
-                pd.Timestamp.min
-            )
+            cum_date = pd.to_datetime(cand["m"].map({m: r.available for m, r in best_cum.items()}))
+            cum_date = cum_date.where(cum_date.notna(), pd.Timestamp.min)
             keep_cum = (cand["kind"] == "cumulative") & (cand["release"] == cum_name)
             keep_mon = (cand["kind"] == "monthly") & (cand["available"] > cum_date)
             c = cand[keep_cum | keep_mon].sort_values(["available", "release"])
@@ -170,9 +169,21 @@ class VintageStore:
         return pd.concat(parts, ignore_index=True)
 
     # ------------------------------------------------------------------ panels
+    def countries_at(self, asof: Date) -> np.ndarray:
+        """The forecasting universe at ``asof``: every country (or unit) with at least one
+        event in some release available by then.
+
+        The roster must be origin-aware. Taking it from the whole store would let a country
+        that first appears in a later release enter earlier forecasts, the historical
+        training panel and the observation model (found in external review, 24 Sep 2026).
+        """
+        ev = self.events[self.events["available"] <= _ts(asof)]
+        return np.sort(ev["country_id"].unique())
+
     @cached_property
     def countries(self) -> pd.DataFrame:
-        """Country id -> name/region, taken from the most recent release that mentions it."""
+        """Country id -> name/region, for display only. Never use it as a roster: it spans
+        every release, including ones after any given origin. Use ``countries_at``."""
         c = (self.events.sort_values("available")
              .drop_duplicates("country_id", keep="last")[["country_id", "country", "region"]])
         return c.set_index("country_id").sort_index()
@@ -190,7 +201,7 @@ class VintageStore:
             events=("id", "size"), deaths=("best", "sum"), is_final=("is_final", "max")
         )
         if countries is None:
-            countries = np.array(sorted(self.countries.index))
+            countries = self.countries_at(asof)
         full = pd.MultiIndex.from_product(
             [countries, np.arange(first_month, last_month + 1)], names=["country_id", "m"]
         )

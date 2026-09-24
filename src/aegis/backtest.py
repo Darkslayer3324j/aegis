@@ -32,7 +32,7 @@ from . import observation as ob
 from .models import forecast_all
 from .pipeline import HORIZONS, VIS_MODELS, CoverageGap, final_view, run_origin
 from .scoring import CountForecast
-from .vintage import VintageStore, month_from_index
+from .vintage import VintageStore, month_from_index, month_index
 
 BASELINES = ("naive", "ma6", "nbar")
 HISTORY_VERSION = 3  # bump when build_history changes, to invalidate the cache
@@ -70,7 +70,15 @@ def code_version() -> dict:
 
 def run(start: str = "2022-06-01", end: str | None = None, target: str = "events",
         draws: int = 40, truth: str | None = None, scope: str = "world",
+        target_start: str | None = None, target_end: str | None = None,
         progress: Callable[[str], None] = print) -> Path:
+    """Walk-forward backtest.
+
+    ``start``/``end`` select forecast *origins*. ``target_start``/``target_end``
+    (YYYY-MM) select *target months* instead: every origin able to reach a target month in
+    the window is included, and only forecasts whose target L + h falls in the window are
+    scored. PROTOCOL.md defines the confirmation set this way.
+    """
     store = VintageStore.load(scope)
     history = load_history(store, scope=scope)
     finals = [r.name for r in store.releases if r.kind == "final"]
@@ -81,8 +89,14 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
     manifest = {r["name"]: r for r in json.loads(config.MANIFEST.read_text(encoding="utf-8"))}
     truth_end = truth_rel.cover_end
     y_truth = truth_df[target]
-    candidates = store.origins(start, end)
-    origins = [o for o in candidates if store.last_data_month(o) + 1 <= truth_end]
+    if target_start or target_end:
+        lo = month_index(pd.Period(target_start, "M")) if target_start else -10**9
+        hi = min(month_index(pd.Period(target_end, "M")) if target_end else 10**9, truth_end)
+        origins = origins_for_targets(store, lo, hi)
+    else:
+        lo, hi = -10**9, truth_end
+        candidates = store.origins(start, end)
+        origins = [o for o in candidates if store.last_data_month(o) + 1 <= truth_end]
     progress(f"{len(origins)} origins, truth = {truth_name} (pinned; through {month_from_index(truth_end)})")
 
     rng = np.random.default_rng(12345)
@@ -102,7 +116,7 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
         fin_L = Y_final[:, -1]
         for h in HORIZONS:
             tm = L + h
-            if tm > truth_end:
+            if tm > truth_end or not (lo <= tm <= hi):
                 continue
             ys = np.array([int(y_truth.get((int(c), tm), 0)) for c in C])
             for regime, fcs in (("vintage", run_.forecasts[h]), ("final", final_fcs[h])):
@@ -161,6 +175,7 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
     per_model = scores[(scores["regime"] == "vintage") & (scores["model"] == "nbar")]
     summary["meta"] = {
         "scope": scope, "target": target, "draws": draws,
+        "target_window": [target_start, target_end] if (target_start or target_end) else None,
         "origins_in_range": len(origins), "origins_scored": int(per_model["origin"].nunique()),
         "origins_skipped": skipped,
         "origin_horizons_scored": int(per_model.groupby(["origin", "h"]).ngroups),
@@ -184,22 +199,32 @@ def run(start: str = "2022-06-01", end: str | None = None, target: str = "events
     return out
 
 
+def origins_for_targets(store: VintageStore, lo: int, hi: int) -> list[pd.Timestamp]:
+    """Every origin whose forecasts (L + h, h in HORIZONS) reach a target month in [lo, hi]."""
+    return [o for o in store.origins()
+            if store.last_data_month(o) + min(HORIZONS) <= hi
+            and store.last_data_month(o) + max(HORIZONS) >= lo]
+
+
 # ---------------------------------------------------------------------- inference
+def block_indices(n: int, block: int, reps: int, rng: np.random.Generator) -> np.ndarray:
+    """(reps, n) resampled positions: runs of ``block`` consecutive origins, never wrapping."""
+    b = max(1, min(block, n))
+    nblocks = int(np.ceil(n / b))
+    starts = rng.integers(0, n - b + 1, size=(reps, nblocks))  # valid starts only
+    return (starts[:, :, None] + np.arange(b)[None, None, :]).reshape(reps, -1)[:, :n]
+
 def block_bootstrap(per_origin: pd.DataFrame, block: int, reps: int = REPS, seed: int = 0) -> np.ndarray:
     """Moving-block bootstrap of a ratio mean over time-ordered origins.
 
     ``per_origin`` has columns ``sum`` and ``count`` and is indexed by origin. Blocks of
-    ``block`` consecutive origins are drawn (circularly) until the series length is
-    reached, so dependence within a block is preserved.
+    ``block`` consecutive origins are drawn until the series length is reached, so
+    dependence within a block is preserved. Blocks never wrap from the last origin to the
+    first: a block is always a real run of consecutive months.
     """
     po = per_origin.sort_index()
     sums, cnts = po["sum"].to_numpy(), po["count"].to_numpy()
-    n = len(po)
-    b = max(1, min(block, n))
-    nblocks = int(np.ceil(n / b))
-    rng = np.random.default_rng(seed)
-    starts = rng.integers(0, n, size=(reps, nblocks))
-    idx = (starts[:, :, None] + np.arange(b)[None, None, :]).reshape(reps, -1)[:, :n] % n
+    idx = block_indices(len(po), block, reps, np.random.default_rng(seed))
     return sums[idx].sum(1) / cnts[idx].sum(1)
 
 
@@ -340,18 +365,23 @@ def decide(scores: pd.DataFrame) -> dict:
         checks = {
             "primary_crps": prim["ci95"][1] < 0 and rel >= 0.02,
             "log_not_worse": logs["ci95"][0] <= 0,
-            "coverage": abs(cov - base_cov) <= 0.02 or abs(cov - 0.8) <= abs(base_cov - 0.8),
+            # PROTOCOL.md §5 amendment A1: coverage may not fall more than 2 points below
+            # the baseline, and may not end up more than 2 points further from 80% than it.
+            "coverage": cov >= base_cov - 0.02 and abs(cov - 0.8) <= abs(base_cov - 0.8) + 0.02,
             "tail_miss": tail - base_tail <= 0.02,
             "per_country": worse <= 0.60,
         }
         out[key] = {"model": name, "crps_diff": prim, "relative_improvement": rel, "logs_diff": logs,
                     "cov80": cov, "base_cov80": base_cov, "tail_miss": tail, "base_tail_miss": base_tail,
                     "share_countries_worse": worse, "checks": checks, "passes": all(checks.values())}
+    # PROTOCOL.md §4 amendment A2: 0 pass -> nothing is carried; 1 pass -> that one;
+    # more than 1 -> the passing candidate with the lowest development mean CRPS.
     passing = [k for k, v in out.items() if v["passes"] and k != "V0"]
     best = min(passing, key=lambda k: out[k]["crps_diff"]["mean_diff"]) if passing else None
     return {"results": out, "selected": best,
-            "rule": "PROTOCOL.md §5: CRPS CI upper < 0 and >= 2% better; log CI lower <= 0; "
-                    "coverage and tail-miss within 2 points; worse in <= 60% of active countries"}
+            "rule": "PROTOCOL.md §5 (with amendment A1): CRPS CI upper < 0 and >= 2% better; "
+                    "log CI lower <= 0; coverage >= baseline - 2 pts and no more than 2 pts further "
+                    "from 80%; tail-miss <= baseline + 2 pts; worse in <= 60% of active countries"}
 
 
 def summarise(scores: pd.DataFrame) -> dict:

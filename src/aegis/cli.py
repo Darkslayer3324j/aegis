@@ -106,12 +106,16 @@ def backtest(start: str = typer.Option("2022-06-01", help="First forecast origin
              draws: int = typer.Option(40, help="Nowcast draws per forecast."),
              truth: Optional[str] = typer.Option(None, help="Final release to score against, e.g. final-26.1 "
                                                              "(default: newest; always recorded with its hash)."),
-             scope: str = SCOPE_OPT) -> None:
+             scope: str = SCOPE_OPT,
+             target_start: Optional[str] = typer.Option(None, help="Score only target months from YYYY-MM "
+                                                                   "(selects origins by target, not origin date)."),
+             target_end: Optional[str] = typer.Option(None, help="Score only target months up to YYYY-MM.")) -> None:
     """Walk-forward evaluation on historical vintages, scored against a pinned final release."""
     from . import backtest as bt
 
     out = bt.run(start=start, end=end, target=target, draws=draws, truth=truth,
-                 scope=_check_scope(scope), progress=_say)
+                 scope=_check_scope(scope), target_start=target_start, target_end=target_end,
+                 progress=_say)
     console.print(Markdown((out / "report.md").read_text(encoding="utf-8")))
 
 

@@ -10,7 +10,9 @@ data is the only selection step (PROTOCOL.md §4).
   months are left as observed.
 * **V2**: robust, long memory. Per country and age, the median log revision ratio over
   all past pairs (no time decay), shrunk toward the global median.
-* **V3**: current reporting state from the reporting triangle. The growth of last month's
+* **V3g**: current reporting state from the reporting triangle. (Round 1 ran this under
+  the name "V3", but it is *not* PROTOCOL.md's V3, the mean-reverting latent state model,
+  which has not been built yet; see PROTOCOL.md deviation D1.) The growth of last month's
   count between its first and second release, g = log(obs@age2 + 1) - log(obs@age1 + 1),
   is a real-time signal of whether reporting is lagging *now*. Regression per age:
   log((final + 1) / (obs + 1)) ~ 1 + country prior + g + 1{obs = 0}.
@@ -27,7 +29,7 @@ from . import observation as ob
 from .scoring import CountForecast, fit_alpha
 from .vintage import VintageStore
 
-CANDIDATES = ("V0", "V1", "V2", "V3")
+CANDIDATES = ("V0", "V1", "V2", "V3g")
 V1_AGE_CAP = 6
 V2_SHRINK_MONTHS = 6.0
 V3_SHRINK_MONTHS = 6.0
@@ -189,5 +191,5 @@ def fit_all(history: pd.DataFrame, store: VintageStore, origin: pd.Timestamp,
         "V0": v0,
         "V1": V1(v0),
         "V2": fit_v2(pairs, v0),
-        "V3": fit_v3(pairs, history, origin, target),
+        "V3g": fit_v3(pairs, history, origin, target),
     }
