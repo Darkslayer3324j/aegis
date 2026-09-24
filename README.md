@@ -26,19 +26,21 @@ public domain) and a breakdown of recorded violence by type:
 
 ![AEGIS Pakistan provinces](docs/tui_pakistan.svg)
 
-`aegis globe` opens a 3D globe in your browser, served from your own machine
-(127.0.0.1; nothing is uploaded):
-- countries (or, in the Pakistan view, provinces) shaded by visibility status, reporting
-  completeness or next month's forecast;
-- recorded events from the last three months as density hexagons;
-- click any unit for its forecast, a 24-month chart of reported vs expected counts, and
-  the same "why" summary as the Evidence tab;
-- a World / Pakistan switch;
-- the header always shows the backtest verdict (baseline vs AEGIS), and any development
-  pass is labelled "unconfirmed".
+`aegis globe` opens a map in your browser, served from your own machine (127.0.0.1):
+- **Zoomed out:** a 3D globe of countries, shaded by visibility status, reporting
+  completeness or next month's forecast, with recorded-event columns.
+- **Zoom in:** every country's **provinces**, with their own forecasts (1,367 units in 137
+  countries).
+- **Zoom further, or type a town in "Go to a place":** street level with terrain and 3D
+  buildings, like Google Maps. Press **3D** to tilt.
+- **Click any country or province** for its forecast, a 24-month chart of reported vs
+  expected counts, and the "why" summary.
+- The header always shows the backtest verdict, and marks any development pass as
+  "unconfirmed".
 
-Events are aggregated into ~55 km cells before they reach the browser. No event
-coordinates, sources or actors are sent.
+The street-level detail is the public base map (OpenStreetMap via OpenFreeMap, plus open
+terrain tiles). AEGIS's own data stays at province level, with events aggregated into
+~55 km cells. Offline, the map falls back to AEGIS's own country shapes.
 
 ## Status: v0.1 (research core)
 
@@ -127,8 +129,8 @@ Other commands:
 | `aegis backtest [--start --end --target events\|deaths]` | vintage-aware walk-forward evaluation |
 | `aegis explain <country>` | the evidence: how each recent month's count changed across releases |
 | `aegis status` | contents of the vintage store, and any releases with caveats |
-| `aegis --scope pakistan` | the same interface for Pakistan's provinces (also `forecast`, `backtest`, `explain`) |
-| `aegis globe [--scope pakistan]` | 3D globe in your browser, served on this machine only (also key `g` in the terminal interface) |
+| `aegis --scope pakistan` / `--scope provinces` | Pakistan's provinces, or every country's provinces (also `forecast`, `backtest`, `explain`) |
+| `aegis globe` | map in your browser: globe → countries → provinces → towns in 3D (also key `g` in the terminal interface) |
 | `aegis verify` | re-hash every raw download against the manifest |
 
 ## How it works

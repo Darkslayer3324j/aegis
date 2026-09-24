@@ -15,16 +15,19 @@ def ring(cw: bool):
     return r if cw else r[::-1]
 
 
-def test_rewind_makes_outer_rings_clockwise_and_holes_counterclockwise():
+@pytest.mark.parametrize("clockwise", [False, True])
+def test_rewind_orients_outer_rings_and_holes_consistently(clockwise):
+    """RFC 7946 (outer counter-clockwise) for MapLibre; the reverse on request (d3-geo)."""
     g = {"features": [
-        {"geometry": {"type": "Polygon", "coordinates": [ring(False), ring(True)]}},
+        {"geometry": {"type": "Polygon", "coordinates": [ring(True), ring(False)]}},
         {"geometry": {"type": "MultiPolygon", "coordinates": [[ring(False)], [ring(True)]]}},
     ]}
-    out = server.rewind(g)
+    out = server.rewind(g, clockwise=clockwise)
+    outer_cw = lambda r: server._signed_area(r) < 0
     poly = out["features"][0]["geometry"]["coordinates"]
-    assert server._signed_area(poly[0]) < 0 and server._signed_area(poly[1]) > 0
+    assert outer_cw(poly[0]) == clockwise and outer_cw(poly[1]) != clockwise
     for p in out["features"][1]["geometry"]["coordinates"]:
-        assert server._signed_area(p[0]) < 0
+        assert outer_cw(p[0]) == clockwise
 
 
 def test_events_leave_the_server_only_as_aggregated_cells():
@@ -54,14 +57,17 @@ def test_server_serves_only_known_files_on_localhost():
         host, port = httpd.server_address
         assert host == "127.0.0.1"
         base = f"http://127.0.0.1:{port}"
-        assert b"AEGIS Globe" in urllib.request.urlopen(base + "/").read()
-        for bad in ("/geo/..%2F..%2Fmanifest.json", "/geo/manifest.json", "/../data/manifest.json"):
+        assert b"AEGIS Map" in urllib.request.urlopen(base + "/").read()
+        assert urllib.request.urlopen(base + "/static/maplibre-gl.js").status == 200
+        for bad in ("/geo/..%2F..%2Fmanifest.json", "/geo/manifest.json", "/../data/manifest.json",
+                    "/static/..%2F..%2Fconfig.py", "/static/index.html"):
             with pytest.raises(urllib.error.HTTPError) as e:
                 urllib.request.urlopen(base + bad)
             assert e.value.code == 404
-        with pytest.raises(urllib.error.HTTPError) as e:
-            urllib.request.urlopen(base + "/api/state?scope=nowhere")
-        assert e.value.code == 400
+        for bad in ("/api/state?scope=nowhere", "/api/unit?scope=world&id=abc"):
+            with pytest.raises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(base + bad)
+            assert e.value.code == 400
     finally:
         httpd.shutdown()
 
@@ -74,3 +80,24 @@ def test_payload_obeys_scope_rules():
     for u in p["units"]:
         if u["status"] == "ABSTAIN":
             assert all(f["aegis"] is None and f["lo"] is None for f in u["forecast"])
+
+
+@pytest.mark.skipif(not (server.config.GEO / "ne_10m_admin_1_states_provinces.geojson").exists(),
+                    reason="no province boundaries")
+def test_events_are_assigned_to_provinces_by_location_not_name():
+    import numpy as np
+    from aegis import geo
+
+    units = geo.admin1()
+    lon = np.array([71.58, 66.99, 74.35, 67.01, 70.0])
+    lat = np.array([34.01, 30.18, 31.55, 24.86, 30.0])
+    precise = np.array([True, True, True, True, False])  # the last one is country-level only
+    uid = geo.assign(lon, lat, "Pakistan", precise)
+    assert [units[u]["name"] for u in uid[:4]] == ["Khyber Pakhtunkhwa", "Balochistan", "Punjab", "Sindh"]
+    assert uid[4] == 0  # never guessed
+
+    df = pd.DataFrame({"country_id": [770, 770], "country": ["Pakistan", "Pakistan"],
+                       "latitude": [34.01, 30.0], "longitude": [71.58, 70.0], "where_prec": [1, 6]})
+    out = geo.unitize(df, {"Pakistan": "Pakistan"})
+    assert out["country"].tolist() == ["Khyber Pakhtunkhwa", "Pakistan: province not recorded"]
+    assert (out["region"] == "Pakistan").all() and out["country_id"].iloc[1] == geo.UNASSIGNED_BASE + 770

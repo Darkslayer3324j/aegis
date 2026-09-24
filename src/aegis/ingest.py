@@ -275,6 +275,8 @@ def build_scope_store(scope: str, progress: Callable[[str], None] = print) -> in
     spec = config.SCOPES[scope]
     out_dir = config.scope_store(scope)
     out_dir.mkdir(parents=True, exist_ok=True)
+    if spec.get("assignment") == "spatial":
+        return _build_spatial_store(scope, out_dir, progress)
     cols = config.EVENT_COLUMNS + ["adm_1"]
     written = 0
     for row in load_manifest().values():
@@ -298,6 +300,45 @@ def build_scope_store(scope: str, progress: Callable[[str], None] = print) -> in
         df.to_parquet(dest, index=False)
         written += 1
         progress(f"{scope}: {row['name']} -> {len(df)} events")
+    return written
+
+
+def _build_spatial_store(scope: str, out_dir: Path, progress: Callable[[str], None]) -> int:
+    """Every country's events relabelled to provinces by location (aegis.geo.unitize)."""
+    from . import geo
+    from .globe.server import geo_key
+
+    cols = config.EVENT_COLUMNS + ["where_prec"]
+    written, admin_of, unmatched = 0, {}, set()
+    for row in load_manifest().values():
+        dest = out_dir / row["store_file"]
+        if dest.exists():
+            continue
+        raw = config.RAW / row["raw_file"]
+        if row["kind"] == "final":
+            with zipfile.ZipFile(raw) as z:
+                member = next(n for n in z.namelist() if n.lower().endswith(".csv"))
+                df, _ = _read_ged_csv(io.BytesIO(z.read(member)), cols)
+        else:
+            with raw.open("rb") as fh:
+                df, _ = _read_ged_csv(fh, cols)
+        for col in ("date_start", "date_end"):
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+        df = df.dropna(subset=["date_start", "country_id"])
+        df = df[df["date_start"] >= "2015-01-01"].reset_index(drop=True)  # as VintageStore keeps
+        df["country_id"] = df["country_id"].astype(int)
+        df["best"] = pd.to_numeric(df["best"], errors="coerce").fillna(0).astype(int)
+        for c in df["country"].unique():
+            if c not in admin_of:
+                admin_of[c] = geo_key("world", c)
+                if admin_of[c] is None:
+                    unmatched.add(c)
+        geo.unitize(df, admin_of).to_parquet(dest, index=False)
+        written += 1
+        progress(f"{scope}: {row['name']} -> {len(df)} events")
+    if unmatched:
+        progress(f"{scope}: no boundary match (all their events stay 'province not recorded'): "
+                 + ", ".join(sorted(unmatched)))
     return written
 
 

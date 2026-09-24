@@ -5,7 +5,7 @@
     aegis forecast        run today's forecast cycle
     aegis backtest        vintage-aware walk-forward evaluation
     aegis explain <name>  the evidence behind one country's numbers
-    aegis globe           3D globe in the browser, served locally
+    aegis globe           map in the browser: globe, countries, provinces, towns in 3D
     aegis explore         exploratory StatsForecast baselines (optional extra)
     aegis status          what is in the store
     aegis verify          re-hash every raw file against the manifest
@@ -127,12 +127,13 @@ def backtest(start: str = typer.Option("2022-06-01", help="First forecast origin
 def globe(scope: str = SCOPE_OPT,
           port: int = typer.Option(8765, help="Local port (the server binds to 127.0.0.1 only)."),
           open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the browser.")) -> None:
-    """3D globe of forecasts, visibility and aggregated recorded events, served on this machine."""
+    """Map in the browser (globe, countries, provinces, towns in 3D), served on this machine."""
     from . import live
     from .globe.server import ensure_polygons, serve
 
     scope = _check_scope(scope)
-    for sc in config.SCOPES:  # make sure every scope the page can switch to has a forecast
+    from .globe.server import MAP_SCOPES
+    for sc in MAP_SCOPES:  # the map shows countries and every country's provinces
         try:
             live.load(sc)
         except FileNotFoundError:

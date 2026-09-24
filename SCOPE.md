@@ -31,9 +31,9 @@ None of these exists today.
 
 A public violence forecaster can be pointed at any population by anyone. AEGIS
 therefore:
-- stays at **country level, or province level for reviewed national scopes** (currently
-  Pakistan; see below). It publishes nothing finer, names no groups or individuals, and
-  does no predictive policing, targeting or scanning;
+- stays at **country or province level** (every country since 24 September 2026; see
+  below). It publishes nothing finer, names no groups or individuals, and does no
+  predictive policing, targeting or scanning;
 - is not marketed to, or tailored for, any military, police or intelligence body;
 - will review dual-use and export-control questions **before** any change to that
   position, and record the decision here.
@@ -45,7 +45,7 @@ are the tests. AEGIS may be described as reliable only when every row is **met**
 
 | # | Test | How it is checked | Status (24 Sep 2026) |
 |---|---|---|---|
-| 1 | Engineering integrity: no leakage, reproducible | `pytest` (46 tests, incl. mutation-checked future-release and future-country leak tests); pinned truth and commit | **met** |
+| 1 | Engineering integrity: no leakage, reproducible | `pytest` (53 tests, incl. mutation-checked future-release and future-country leak tests); pinned truth and commit | **met** |
 | 2 | Beats the simple baseline on development data | PROTOCOL.md §5 decision rule over 38 origins | world: not met. **Pakistan: met, borderline** (V1, round 1b) |
 | 3 | Beats it on data never seen | Single confirmatory run against `final-27.1` (about June 2027) | pending |
 | 4 | Matches or beats established systems on the same targets | Head-to-head with VIEWS and ACLED CAST (needs the user's own ACLED key), and with strong statistical baselines (`aegis explore`) | **world: not met.** IMAPA/TSB beat AEGIS on CRPS; AEGIS is best on log score. Pakistan: AEGIS first on both, exploratory. VIEWS/CAST not started |
@@ -85,6 +85,27 @@ The owner asked for a view to "see and monitor the location in depth". "In depth
 at these limits; district-, city- or event-level drill-down needs a new dual-use review
 first.
 
+## Provinces for every country, and a street-level base map (24 September 2026)
+
+The owner asked for province-level forecasts for every country, and a map that can zoom
+into a town "like Google Maps" in 3D.
+
+- **Province level everywhere.** This is the same granularity as the Pakistan review
+  above, whose reasoning (ACLED CAST publishes province-level forecasts for every country)
+  covers all countries. Scope `provinces`: 1,367 units in 137 countries.
+- **Events are assigned by location** (`aegis.geo`): the Natural Earth admin-1 polygon,
+  within the event's own country, that contains it. Only events UCDP geolocated at
+  province precision or better (`where_prec` <= 4) are assigned. Coarser ones stay
+  "<country>: province not recorded" and are never guessed. Natural Earth still shows
+  Pakistan's former FATA separately from Khyber Pakhtunkhwa.
+- **The street-level 3D view is the base map, not AEGIS data.** Buildings, streets and
+  terrain come from OpenStreetMap (via OpenFreeMap) and open terrain tiles, the same
+  public map anyone can open. AEGIS's own layers stop at province level. Events stay
+  aggregated to ~55 km cells, and their columns fade out before street zoom. The map says
+  so at street level.
+- **The browser talks to outside services while online:** map tiles, terrain tiles, and
+  the place search you type. See THIRD_PARTY_NOTICES.md. Offline, none is contacted.
+
 ## Integrating other open-source projects (council decision, 24 September 2026)
 
 The owner asked to "implement features from all of these repositories and the entirety
@@ -93,8 +114,8 @@ this scope, the licences, and the goal of running on any computer.
 
 | Decision | Repositories | Reason |
 |---|---|---|
-| **Adopt now** (optional extras, CPU-only, pip-installable) | StatsForecast (`[baselines]`); MAPIE later if interval calibration needs it | Permissive; serve the existing goal of stronger baselines and calibration |
-| **Later, opt-in**, only after the core passes readiness test 2 for the world | PyMC, sktime, Darts (no torch), MapLibre or deck.gl (bundled JS), pystac-client and Rasterio for *country-level* covariates only (e.g. night lights), the Google CAP library (forecasts labelled as forecasts) | Useful, but add surface area before the core claim holds |
+| **Adopt now** (optional extras, CPU-only, pip-installable) | StatsForecast (`[baselines]`); MAPIE later if interval calibration needs it. **MapLibre GL JS** was adopted on 24 Sep 2026 for the map the owner asked for (bundled JS, BSD-3-Clause), replacing globe.gl | Permissive; serve the existing goal of stronger baselines and calibration |
+| **Later, opt-in**, only after the core passes readiness test 2 for the world | PyMC, sktime, Darts (no torch), deck.gl (bundled JS), pystac-client and Rasterio for *country-level* covariates only (e.g. night lights), the Google CAP library (forecasts labelled as forecasts) | Useful, but add surface area before the core claim holds |
 | **Not in AEGIS: licence** | worldmonitor (AGPL-3.0), Grafana (AGPL-3.0), ntopng (GPL-3.0), NetAlertX (GPL-3.0), Suricata (GPL-2.0) | Copying them in would force relicensing. They can be studied, or run as separate programs |
 | **Not in AEGIS: surveillance or dual use** | Traccar, OwnTracks, Sniffnet | Track individual devices or people; contrary to "no individuals, no tracking" above |
 | **Not in AEGIS: a different project** | Zeek, OpenTelemetry, Prometheus, Alertmanager; CesiumJS, kepler.gl, OpenLayers; TorchGeo, TerraTorch, Open-CD, NeuralForecast, GluonTS; GDAL, Satpy, eo-learn, stackstac, geemap | Operations infrastructure, duplicate globes, GPU-dependent models, or heavy geospatial stacks that conflict with "runs on any computer" |

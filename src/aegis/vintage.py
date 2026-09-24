@@ -99,8 +99,8 @@ class VintageStore:
                 cover_end=month_index(pd.Period(r["cover_end"], "M")),
             )
             df = pd.read_parquet(store_dir / r["store_file"])
-            if scope != "world":
-                df = to_units(df, scope)
+            if scope != "world" and config.SCOPES[scope].get("assignment") != "spatial":
+                df = to_units(df, scope)  # name-based national scopes; spatial ones are pre-built
             if meta.kind == "final":
                 # Finals carry 35+ years of history; AEGIS only needs recent years.
                 df = df[df["date_start"] >= "2015-01-01"]

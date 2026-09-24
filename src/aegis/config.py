@@ -77,6 +77,12 @@ SCOPES = {
         ],
         "unassigned": (9, "Province not recorded"),
     },
+    # Every country's provinces, assigned by location (aegis.geo). Same granularity as the
+    # Pakistan scope, reviewed in SCOPE.md.
+    "provinces": {
+        "title": "All provinces", "unit": "province", "assignment": "spatial",
+        "boundaries": "admin1_simplified.geojson", "polygon_key": "uid",
+    },
 }
 
 
