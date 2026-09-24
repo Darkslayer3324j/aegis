@@ -1,3 +1,4 @@
 # Vendored third-party assets: keep byte-identical on every platform
+src/aegis/globe/static/maplibre-gl.* -text
 *.min.js -text
 *.jpg binary
