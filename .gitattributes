@@ -1,0 +1,3 @@
+# Vendored third-party assets: keep byte-identical on every platform
+*.min.js -text
+*.jpg binary
