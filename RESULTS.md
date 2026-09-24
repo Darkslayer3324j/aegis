@@ -26,7 +26,7 @@ are in `scores.parquet`.
 |---|---|
 | **Paper 1.** Does scoring on the data available at the time change measured skill? | **Yes for the simple baselines; not clearly for the best model.** Vintage-view CRPS is significantly worse for `naive` (+0.87) and `ma6` (+0.98). For `nbar` it is +0.55, 95% CI [−0.03, +1.04]. Rankings are unchanged for these three models. Richer models are untested. |
 | **E2.** Does the nowcast estimate the eventual count better than the raw count? | **Yes at ages 1–2.** CRPS −1.99 at age 1, CI [−2.88, −1.00]. Age 3 is not significant overall. Where estimated completeness is below 0.8, point estimates reverse at every age, but the difference is significant only at age 3. |
-| **Paper 2.** Does the visibility correction improve forecasts? | **Split by metric.** **Log score improves:** −0.099, CI [−0.192, −0.033]. **CRPS worsens:** +0.39, CI [+0.09, +0.74], driven by countries with C₁ < 0.8. On the pre-agreed primary metric (CRPS) the baseline wins. |
+| **Paper 2.** Does the visibility correction improve forecasts? | **World: not yet.** Log score improves significantly for every candidate; mean CRPS worsens for all of them (round 1b: best is V1, +0.215 [−0.024, +0.472]). **Pakistan: V1 passes the development rule, borderline** (−6.1% CRPS, CI [−0.244, −0.009]; fails the 3-month sensitivity check). |
 | Do visibility flags pick out less reliable forecasts? | **Consistent with yes, including on scale-free measures.** Tail-miss rate: 8.4% for OK against 13.3% for WARN and 13.2% for ABSTAIN. Normalised CRPS: 0.38 against 1.09 and 0.90. No interval is attached yet. |
 | Is low completeness episodic? | **Short, somewhat persistent episodes.** P(low next \| low now) = 60% against 13% otherwise. Mean episode length is 2.0 months; 67% of episodes last one month and 16% last three or more. |
 
@@ -69,8 +69,9 @@ degrades far more on the vintage view (3.30 → 4.72) than the other models do.
 
 The split between metrics is informative. CRPS weighs absolute error, so it is dominated
 by large overshoots in a few high-volume, low-completeness countries. The log score
-weighs probability assigned to what happened, and it improves because the correction
-widens and re-centres forecasts that the baseline was confidently wrong about.
+weighs probability assigned to what happened. One plausible explanation (not yet
+decomposed) is that the correction widens and re-centres forecasts in cases where the
+baseline assigns too little probability to the realised count.
 
 ## Table 4: visibility status (`nbar+vis`, active countries)
 
@@ -98,7 +99,50 @@ events. 1,540 country-months across 54 countries.
 | One-month episodes | 67% |
 | Three-plus-month episodes | 16% |
 
-## v0.2 development round 1 (PROTOCOL.md §4–5)
+## v0.2 development round 1b: current (24 September 2026)
+
+This is round 1 re-run on fixed code: the origin-aware country universe (PROTOCOL.md F1),
+bootstrap blocks that do not wrap (F2), and the explicit coverage rule (A1). It also
+includes the new two-state benchmark M2 (A4). Commit `01b38c1`, truth `final-26.1`, 38
+origins. **This round supersedes round 1 below.**
+
+**World** (137 countries, down from 139: two countries that only appear after some
+origins no longer leak into them; `results/backtest-20260924-1106`):
+
+| Candidate | ΔCRPS vs `nbar` [95% CI, 6-mo blocks] | Relative | ΔLog [95% CI] | Worse in % of countries | Passes §5 |
+|---|---|---|---|---|---|
+| V0 (v0.1 estimator) | +0.331 [+0.058, +0.578] | −3.2% | −0.099 [−0.187, −0.030] | 61% | no |
+| V1 (recent months only) | +0.215 [−0.024, +0.472] | −2.1% | −0.095 [−0.184, −0.023] | 59% | no |
+| V2 (robust long-run) | +0.271 [+0.106, +0.513] | −2.6% | −0.091 [−0.176, −0.020] | 55% | no |
+| V3g (growth regression) | +1.523 [+0.862, +2.342] | −14.9% | −0.083 [−0.151, −0.020] | 21% | no |
+| M2 (two-state) | +0.428 [+0.337, +0.610] | −4.2% | −0.091 [−0.183, −0.019] | 62% | no |
+
+**No world candidate passes.** Every candidate improves the log score significantly, and
+every one loses on mean CRPS. M2's nowcast is sound (−1.92 [−2.57, −1.04] at age 1) and
+bounded where V3g's is not, but that does not carry over into the forecast. So the loss
+is in how corrected history feeds the forecasting model, not only in the correction.
+
+**Pakistan** (8 units; `results/pakistan/backtest-20260924-1053`):
+
+| Candidate | ΔCRPS vs `nbar` [95% CI] | 3-mo / 9-mo blocks | Relative | ΔLog [95% CI] | Passes §5 |
+|---|---|---|---|---|---|
+| V0 | −0.090 [−0.223, +0.013] | [−0.233, +0.022] / [−0.199, +0.020] | +5.1% | −0.071 [−0.116, −0.024] | no |
+| **V1** | **−0.108 [−0.244, −0.009]** | [−0.251, **+0.003**] / [−0.222, −0.003] | **+6.1%** | **−0.074 [−0.118, −0.030]** | **yes (borderline)** |
+| V2 | −0.065 [−0.171, +0.023] | [−0.176, +0.023] / [−0.135, +0.029] | +3.6% | −0.036 [−0.062, −0.013] | no |
+| V3g | +0.057 [−0.144, +0.227] | — | −3.2% | −0.028 [−0.091, +0.042] | no |
+| M2 | −0.085 [−0.198, +0.003] | [−0.196, +0.005] / [−0.174, +0.017] | +4.8% | −0.040 [−0.067, −0.016] | no |
+
+**V1 passes the pre-agreed development rule for Pakistan**, the first pass of any
+candidate. It is borderline:
+- the point estimates are the same as in round 1, where the upper bound was +0.010;
+- what moved is the interval, after the correctness fix to the bootstrap (F2), which was
+  made before this result was seen;
+- it fails the 3-month-block sensitivity check (upper bound +0.003).
+
+This is a development pass, not evidence that anyone can rely on. By the selection rule
+(A2), V1 is the candidate for Pakistan's confirmation against `final-27.1`.
+
+## v0.2 development round 1, superseded by round 1b (PROTOCOL.md §4–5)
 
 Four observation-model candidates, fixed before any result, were run on the same 38 origins
 (`results/backtest-20260923-2303`).
@@ -162,4 +206,4 @@ age-12 estimate. Candidate V1 in PROTOCOL.md tests correcting recent months only
 | R5 | Explicit origin/horizon accounting | Revision 1's "42 origins" and "17,097 forecasts" were both right: 17,097 = (40 × 3 + 2 + 1) × 139. That was never explained, and it is now reported as 111 origin-horizons × 139 |
 | R6 | Wording: "is consistent with" instead of causal claims; "episodic" backed by Table 5; flags described as associative | — |
 | R7 | The revision 1 "pre-registered" v0.2 split withdrawn: July 2024 → December 2025 was already seen | Replaced by [PROTOCOL.md](PROTOCOL.md): nested walk-forward development, confirmation against `final-27.1` |
-| R8 | End-to-end anti-leak test: a store truncated at the origin must give identical forecasts to the full store plus a fake future revision and final | Mutation-checked: it catches three planted leaks (snapshot, observation model, last data month) |
+| R8 | End-to-end anti-leak test: a store truncated at the origin must give identical forecasts to the full store plus a fake future revision and final | Mutation-checked: it catches three planted future-*release* leaks. It did **not** cover the country universe; a future-only-country leak was later found by external review (PROTOCOL.md F1) and now has its own mutation-checked test |

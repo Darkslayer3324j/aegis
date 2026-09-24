@@ -131,6 +131,8 @@ them can change a result that was already reported.
 
 Pakistan provinces (same protocol, 8 units, round 1): no candidate passes. V1 comes closest: ΔCRPS −0.108 [−0.229, +0.010], +6.1% relative, with log score significantly better.
 
+| 1b | 24 Sep 2026 | Round 1 re-run on the fixed code (F1, F2, A1), plus M2. **World:** no candidate passes. ΔCRPS V0 +0.331 [+0.058, +0.578]; V1 +0.215 [−0.024, +0.472]; V2 +0.271 [+0.106, +0.513]; V3g +1.523 [+0.862, +2.342]; M2 +0.428 [+0.337, +0.610]. All improve log score (CIs exclude 0). **Pakistan:** V1 passes §5, ΔCRPS −0.108 [−0.244, −0.009] (+6.1%), but fails the 3-month-block sensitivity check (upper +0.003); V0, V2 and M2 miss; V3g worse. | World: nothing carried, and development continues (the registered V3 and V4 are still unbuilt). Pakistan: V1 is the candidate under A2. **Not frozen yet**: freezing (§6) is the next step and needs the owner's go-ahead. |
+
 | Field | Value |
 |---|---|
 | Chosen candidate | *(to be filled before freezing)* |

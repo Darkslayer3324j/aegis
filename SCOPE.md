@@ -43,10 +43,10 @@ therefore:
 The owner's standard (23 September 2026): *if it fails its tests, it is not ready.* These
 are the tests. AEGIS may be described as reliable only when every row is **met**.
 
-| # | Test | How it is checked | Status (23 Sep 2026) |
+| # | Test | How it is checked | Status (24 Sep 2026) |
 |---|---|---|---|
-| 1 | Engineering integrity: no leakage, reproducible | `pytest` (43 tests, incl. the mutation-checked end-to-end anti-leak test); pinned truth and commit | **met** |
-| 2 | Beats the simple baseline on development data | PROTOCOL.md §5 decision rule over 38 origins | not met (see RESULTS.md) |
+| 1 | Engineering integrity: no leakage, reproducible | `pytest` (46 tests, incl. mutation-checked future-release and future-country leak tests); pinned truth and commit | **met** |
+| 2 | Beats the simple baseline on development data | PROTOCOL.md §5 decision rule over 38 origins | world: not met. **Pakistan: met, borderline** (V1, round 1b) |
 | 3 | Beats it on data never seen | Single confirmatory run against `final-27.1` (about June 2027) | pending |
 | 4 | Matches or beats established systems on the same targets | Head-to-head with VIEWS (country-month) and ACLED CAST (province-level; needs the user's own ACLED key) | not started |
 | 5 | Calibrated: the 80% range covers 75–85% | Coverage in the backtest (currently 91–94%: ranges too wide to be useful) | not met |
