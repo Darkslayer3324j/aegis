@@ -35,7 +35,7 @@ from .scoring import CountForecast
 from .vintage import VintageStore, month_from_index, month_index
 
 BASELINES = ("naive", "ma6", "nbar")
-HISTORY_VERSION = 3  # bump when build_history changes, to invalidate the cache
+HISTORY_VERSION = 4  # bump when build_history changes, to invalidate the cache (4: origin-aware roster)
 BLOCK = 6            # primary bootstrap block length, in origins (months)
 SENSITIVITY_BLOCKS = (3, 9)
 REPS = 4000
@@ -47,7 +47,12 @@ def load_history(store: VintageStore, progress: Callable | None = None,
     suffix = "" if scope == "world" else f"_{scope}"
     cache = config.HOME / f"history_cache{suffix}.parquet"
     stamp = config.HOME / f"history_cache{suffix}.stamp"
-    key = f"{HISTORY_VERSION}:{config.MANIFEST.stat().st_mtime_ns}"
+    # The key includes a hash of the code that builds the history, so a change to it can
+    # never silently reuse a stale cache (a missed version bump nearly did, 24 Sep 2026).
+    import hashlib
+    src = Path(__file__).resolve().parent
+    code = hashlib.sha256(b"".join((src / f).read_bytes() for f in ("vintage.py", "observation.py"))).hexdigest()[:16]
+    key = f"{HISTORY_VERSION}:{code}:{config.MANIFEST.stat().st_mtime_ns}"
     if cache.exists() and stamp.exists() and stamp.read_text(encoding="utf-8") == key:
         return pd.read_parquet(cache)
     hist = ob.build_history(store, store.origins(), progress=progress)
