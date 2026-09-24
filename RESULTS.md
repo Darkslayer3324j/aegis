@@ -142,6 +142,65 @@ candidate. It is borderline:
 This is a development pass, not evidence that anyone can rely on. By the selection rule
 (A2), V1 is the candidate for Pakistan's confirmation against `final-27.1`.
 
+## Exploratory findings (24 September 2026; cannot decide a pass, PROTOCOL.md §8)
+
+### Where the world correction loses: almost entirely Brazil
+
+Per-country breakdown of ΔCRPS(candidate − `nbar`), round 1b, active countries, as a
+contribution to the per-forecast mean:
+
+| Candidate | Total | Brazil | Next two biggest losses | Total without the 3 biggest losers |
+|---|---|---|---|---|
+| V0 | +0.331 | **+0.371** | Ecuador +0.039, Israel +0.024 | −0.104 |
+| V1 | +0.215 | **+0.318** | Ecuador +0.031, Myanmar +0.018 | −0.152 |
+| V2 | +0.271 | **+0.276** | Colombia +0.110, Israel +0.015 | −0.131 |
+| M2 | +0.428 | **+0.342** | Colombia +0.145, Myanmar +0.030 | −0.088 |
+
+**Cause.** UCDP expanded its first-release coverage of Brazil over time. The share of
+events captured at first release rose 11% (2021) → 54% (2022) → 88% (2023–24) → 113%
+(2025). Every candidate learned the early gap and kept correcting for it after coverage
+improved. In June 2022, V0 forecast 244 events against 88 actual; in March 2023, 516
+against 161.
+
+This is a **change in the reporting process itself**, not the short episodes the
+candidates were built for. Removing Brazil would turn every candidate negative, but that
+is post-hoc and is **not** claimed. Instead, candidate V5 (coverage-shift aware) was
+registered before being built (PROTOCOL.md A5).
+
+### Stronger statistical baselines (StatsForecast, `aegis explore`)
+
+Same 38 origins, same countries, targets and truth. Point forecasts are turned into
+negative-binomial distributions, with dispersion fitted to each model's own one-step
+errors from the six months before each origin.
+
+**World** (active countries):
+
+| Model | CRPS | ΔCRPS vs `nbar` [95% CI] | Log | Cov80 |
+|---|---|---|---|---|
+| IMAPA | **9.609** | **−0.617 [−1.027, −0.165]** | 2.735 | 90.1% |
+| TSB | 9.634 | −0.592 [−0.981, −0.296] | 2.695 | 90.3% |
+| WindowAverage(6) | 9.747 | −0.479 [−0.872, −0.190] | 2.758 | 90.0% |
+| AutoTheta | 9.815 | −0.410 [−0.944, +0.370] | 3.366 | 88.3% |
+| CrostonOptimized | 10.039 | −0.187 [−0.644, +0.402] | 2.766 | 90.9% |
+| `nbar` (protocol baseline) | 10.226 | — | 2.548 | 93.5% |
+| V1 | 10.441 | +0.215 [−0.024, +0.472] | 2.453 | 94.1% |
+| AutoETS | 10.451 | +0.225 [−0.718, +1.059] | 2.962 | 88.7% |
+| V0 | 10.557 | +0.331 [+0.058, +0.578] | **2.450** | 94.0% |
+
+**Pakistan** (8 units): V1 ranks **first** on both CRPS (1.674) and log score (1.683).
+IMAPA is third (1.700), and all StatsForecast models do worse on log score.
+
+**What this means:**
+- The protocol's baseline `nbar` is **not** the strongest simple model worldwide.
+  Intermittent-demand models (IMAPA, TSB), which are built for sparse counts, beat it
+  significantly on CRPS. AEGIS's world CRPS gap to the best available simple model is
+  therefore about 0.8, not 0.2.
+- AEGIS's advantage is the **log score**, which puts less weight on large absolute
+  errors: 2.45 against 2.70–3.37 for the StatsForecast models.
+- Readiness test 4 (match established methods) is **not met** for the world.
+- Next: the visibility correction applied on top of IMAPA/TSB (a candidate to register
+  before building) may combine both strengths.
+
 ## v0.2 development round 1, superseded by round 1b (PROTOCOL.md §4–5)
 
 Four observation-model candidates, fixed before any result, were run on the same 38 origins

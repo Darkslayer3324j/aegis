@@ -48,7 +48,7 @@ are the tests. AEGIS may be described as reliable only when every row is **met**
 | 1 | Engineering integrity: no leakage, reproducible | `pytest` (46 tests, incl. mutation-checked future-release and future-country leak tests); pinned truth and commit | **met** |
 | 2 | Beats the simple baseline on development data | PROTOCOL.md §5 decision rule over 38 origins | world: not met. **Pakistan: met, borderline** (V1, round 1b) |
 | 3 | Beats it on data never seen | Single confirmatory run against `final-27.1` (about June 2027) | pending |
-| 4 | Matches or beats established systems on the same targets | Head-to-head with VIEWS (country-month) and ACLED CAST (province-level; needs the user's own ACLED key) | not started |
+| 4 | Matches or beats established systems on the same targets | Head-to-head with VIEWS and ACLED CAST (needs the user's own ACLED key), and with strong statistical baselines (`aegis explore`) | **world: not met.** IMAPA/TSB beat AEGIS on CRPS; AEGIS is best on log score. Pakistan: AEGIS first on both, exploratory. VIEWS/CAST not started |
 | 5 | Calibrated: the 80% range covers 75–85% | Coverage in the backtest (currently 91–94%: ranges too wide to be useful) | not met |
 | 6 | A prospective record | At least 12 months of forecasts archived *before* their outcomes were known, then scored | not started |
 | 7 | A named user and decision, with a harm analysis | Written with that user: what action the forecast informs, and the cost of a false OK during an onset vs a false WARN | not started |
