@@ -26,6 +26,20 @@ public domain) and a breakdown of recorded violence by type:
 
 ![AEGIS Pakistan provinces](docs/tui_pakistan.svg)
 
+`aegis globe` opens a 3D globe in your browser, served from your own machine
+(127.0.0.1; nothing is uploaded):
+- countries (or, in the Pakistan view, provinces) shaded by visibility status, reporting
+  completeness or next month's forecast;
+- recorded events from the last three months as density hexagons;
+- click any unit for its forecast, a 24-month chart of reported vs expected counts, and
+  the same "why" summary as the Evidence tab;
+- a World / Pakistan switch;
+- the header always shows the backtest verdict (baseline vs AEGIS), and any development
+  pass is labelled "unconfirmed".
+
+Events are aggregated into ~55 km cells before they reach the browser. No event
+coordinates, sources or actors are sent.
+
 ## Status: v0.1 (research core)
 
 | Layer | v0.1 |
@@ -88,6 +102,7 @@ Other commands:
 | `aegis explain <country>` | the evidence: how each recent month's count changed across releases |
 | `aegis status` | contents of the vintage store, and any releases with caveats |
 | `aegis --scope pakistan` | the same interface for Pakistan's provinces (also `forecast`, `backtest`, `explain`) |
+| `aegis globe [--scope pakistan]` | 3D globe in your browser, served on this machine only (also key `g` in the terminal interface) |
 | `aegis verify` | re-hash every raw download against the manifest |
 
 ## How it works

@@ -71,6 +71,20 @@ Reviewed before building:
 - **Purpose:** research and preparedness framing only, under all the rules above. It is
   not marketed to military, police or intelligence users.
 
+## Globe view (24 September 2026)
+
+`aegis globe` adds a 3D view within the same limits:
+- served on 127.0.0.1 only;
+- forecasts at country or province level only;
+- recorded events sent to the browser **only as counts per ~55 km cell** (0.5°). No
+  individual event coordinates, sources or actor names leave the server
+  (`tests/test_globe.py` checks this);
+- the same template evidence summaries.
+
+The owner asked for a view to "see and monitor the location in depth". "In depth" stops
+at these limits; district-, city- or event-level drill-down needs a new dual-use review
+first.
+
 ## Evidence panel wording rules
 
 The per-country "why" summary must:

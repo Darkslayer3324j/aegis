@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEGIS Globe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/globe.gl@2.34.4/dist/globe.gl.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: rgba(13,19,28,.88); --line: #243042; --text: #c0caf5; --dim: #6b7a8c;
+    --accent: #7aa2f7; --ok: #3fc1b0; --warn: #e6b450; --abstain: #ff5f56; --grey: #2a3646;
+    --mono: "JetBrains Mono", ui-monospace, monospace; --sans: Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); overflow: hidden; }
+  #globe { position: fixed; inset: 0; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+           backdrop-filter: blur(6px); }
+  header { position: fixed; top: 12px; left: 12px; right: 12px; height: 48px; display: flex; align-items: center;
+           gap: 14px; padding: 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .brand { font: 600 15px var(--mono); color: var(--accent); letter-spacing: .06em; white-space: nowrap; }
+  .brand small { color: var(--dim); font-weight: 400; letter-spacing: 0; margin-left: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { background: none; border: 0; color: var(--dim); padding: 6px 11px; font: 500 12px var(--sans); cursor: pointer; }
+  .seg button.on { background: #1b2635; color: var(--text); }
+  .seg button:focus-visible, .row:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .meta { font: 12px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chips { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .chip { font: 600 12px var(--mono); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); white-space: nowrap; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .abstain { color: var(--abstain); }
+  #left { top: 72px; left: 12px; bottom: 52px; width: 300px; display: flex; flex-direction: column; }
+  #left .head { padding: 12px 12px 8px; border-bottom: 1px solid var(--line); }
+  #search { width: 100%; background: #0f1621; border: 1px solid var(--line); border-radius: 7px; color: var(--text);
+            padding: 7px 9px; font: 13px var(--sans); }
+  .modes { margin-top: 8px; display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); }
+  #list { overflow-y: auto; flex: 1; }
+  .row { display: grid; grid-template-columns: 10px 1fr 52px 44px; gap: 8px; align-items: center; padding: 7px 12px;
+         cursor: pointer; border-bottom: 1px solid rgba(36,48,66,.5); font-size: 13px; }
+  .row:hover, .row.sel { background: #152030; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .num { font: 12px var(--mono); text-align: right; color: var(--text); }
+  .num.dim { color: var(--dim); }
+  .listhead { display: grid; grid-template-columns: 10px 1fr 52px 44px; gap: 8px; padding: 6px 12px; font: 11px var(--mono);
+              color: var(--dim); border-bottom: 1px solid var(--line); }
+  #right { top: 72px; right: 12px; bottom: 52px; width: 400px; overflow-y: auto; padding: 16px; }
+  #right h2 { margin: 0; font: 600 18px var(--sans); }
+  #right .sub { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .badge { display: inline-block; font: 600 11px var(--mono); padding: 2px 7px; border-radius: 5px; margin-left: 8px;
+           vertical-align: middle; border: 1px solid currentColor; }
+  .headline { margin: 14px 0 12px; font-weight: 600; line-height: 1.4; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .card .k { font: 11px var(--mono); color: var(--dim); }
+  .card .v { font: 600 17px var(--mono); margin-top: 2px; }
+  .card .r { font: 11px var(--mono); color: var(--dim); }
+  .section { font: 600 11px var(--mono); color: var(--accent); letter-spacing: .08em; margin: 16px 0 6px; text-transform: uppercase; }
+  .pt { margin: 0 0 8px; font-size: 13px; }
+  .pt b { color: var(--accent); font-weight: 600; }
+  .pt.vis b { color: var(--warn); }
+  svg.spark { width: 100%; height: 90px; display: block; }
+  .legend { display: flex; gap: 12px; font: 11px var(--mono); color: var(--dim); margin-top: 4px; }
+  .foot { font-size: 11px; color: var(--dim); font-style: italic; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 10px; }
+  footer { position: fixed; left: 12px; right: 12px; bottom: 12px; height: 32px; display: flex; align-items: center;
+           padding: 0 14px; font-size: 11px; color: var(--dim); background: var(--panel); border: 1px solid var(--line);
+           border-radius: 10px; }
+  footer .scale { margin-left: auto; display: flex; gap: 12px; align-items: center; font-family: var(--mono); }
+  .empty { color: var(--dim); padding: 24px 4px; }
+  #err { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #2a1417; border: 1px solid var(--abstain);
+         color: #ffb3ae; padding: 10px 14px; border-radius: 8px; display: none; font: 13px var(--mono); z-index: 10; }
+  * { scrollbar-width: thin; scrollbar-color: #2f4258 transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #2f4258; border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @media (max-width: 1100px) { #left { width: 240px; } #right { width: 330px; } .brand small { display: none; } }
+  @media (max-width: 860px) {
+    header { flex-wrap: wrap; height: auto; padding: 8px 10px; gap: 8px; }
+    .meta { width: 100%; order: 3; }
+    .chips { margin-left: 0; flex-wrap: wrap; }
+    #left { top: auto; bottom: 52px; left: 12px; right: 12px; width: auto; height: 34vh; }
+    #right { top: 120px; left: 12px; right: 12px; width: auto; bottom: calc(34vh + 60px); }
+    #right:has(.empty) { display: none; }
+    footer { height: auto; padding: 6px 10px; flex-wrap: wrap; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<div id="globe" aria-label="3D globe of recorded organised violence and forecasts"></div>
+
+<header>
+  <div class="brand">◉ AEGIS<small>visibility-aware forecasting</small></div>
+  <div class="seg" role="tablist" aria-label="Scope">
+    <button data-scope="world">World</button>
+    <button data-scope="pakistan">Pakistan</button>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div class="chips" id="chips"></div>
+</header>
+
+<aside class="panel" id="left">
+  <div class="head">
+    <input id="search" type="search" placeholder="Filter…" aria-label="Filter">
+    <div class="modes">Colour by
+      <div class="seg" id="modes">
+        <button data-mode="status">Status</button>
+        <button data-mode="visibility">Visibility</button>
+        <button data-mode="forecast">Forecast</button>
+      </div>
+    </div>
+  </div>
+  <div class="listhead"><span></span><span id="unitlabel">Country</span><span style="text-align:right">Next</span><span style="text-align:right">Vis</span></div>
+  <div id="list" role="listbox" aria-label="Units"></div>
+</aside>
+
+<aside class="panel" id="right" aria-live="polite"><div class="empty">Select a country on the globe or in the list.</div></aside>
+
+<footer>
+  <span id="footer"></span>
+  <span class="scale" id="scale"></span>
+</footer>
+<div id="err" role="alert"></div>
+
+<script>
+const COLORS = { OK: "#3fc1b0", WARN: "#e6b450", ABSTAIN: "#ff5f56", NONE: "#1f2a38" };
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const params = new URLSearchParams(location.search);
+let scope = params.get("scope") || "world";
+let mode = "status";
+let data = null, features = [], byGeo = new Map(), selected = null;
+
+const world = Globe()(document.getElementById("globe"))
+  .backgroundColor("#0b0f14")
+  .globeImageUrl("https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-dark.jpg")
+  .showAtmosphere(true).atmosphereColor("#3a6ea5").atmosphereAltitude(0.16)
+  .polygonSideColor(() => "rgba(20,30,45,.55)")
+  .polygonStrokeColor(() => "#2f4258")
+  .polygonsTransitionDuration(250)
+  .hexBinPointLat("lat").hexBinPointLng("lng").hexBinPointWeight("n")
+  .hexMargin(0.12).hexTransitionDuration(300)
+  .onPolygonClick(f => { const u = unitFor(f); if (u) select(u.id, false); })
+  .onPolygonHover(f => document.body.style.cursor = f && unitFor(f) ? "pointer" : "");
+world.controls().autoRotate = true;
+world.controls().autoRotateSpeed = 0.25;
+window.addEventListener("resize", () => world.width(innerWidth).height(innerHeight));
+
+function unitFor(f) { return f.context ? undefined : byGeo.get(f.properties[data.polygon_key]); }
+function nameOf(f) { return f.properties[data.polygon_key] || f.properties.ADMIN || ""; }
+
+function visColor(c) {           // completeness: red (low) -> amber -> teal (complete or over)
+  if (c == null) return COLORS.NONE;
+  const t = Math.max(0, Math.min(1, (c - 0.4) / 0.6));
+  const a = [255, 95, 86], b = [230, 180, 80], d = [63, 193, 176];
+  const mix = (x, y, k) => x.map((v, i) => Math.round(v + (y[i] - v) * k));
+  const rgb = t < 0.5 ? mix(a, b, t * 2) : mix(b, d, (t - 0.5) * 2);
+  return `rgb(${rgb.join(",")})`;
+}
+function fcColor(v, max) {       // forecast on a log scale: deep blue -> violet -> pink
+  if (v == null) return COLORS.ABSTAIN;
+  const t = Math.log1p(v) / Math.log1p(Math.max(max, 1));
+  const a = [26, 42, 72], b = [122, 162, 247], d = [247, 118, 190];
+  const mix = (x, y, k) => x.map((vv, i) => Math.round(vv + (y[i] - vv) * k));
+  const rgb = t < 0.5 ? mix(a, b, t * 2) : mix(b, d, (t - 0.5) * 2);
+  return `rgb(${rgb.join(",")})`;
+}
+function capColor(f) {
+  const u = unitFor(f);
+  if (f.context) return "rgba(31,42,56,0.55)";
+  if (!u) return COLORS.NONE;
+  if (selected === u.id) return "#ffffff";
+  if (mode === "status") return u.activity12 > 0 || u.obs_last > 0 ? COLORS[u.status] : "#24433f";
+  if (mode === "visibility") return u.activity12 > 0 || u.obs_last > 0 ? visColor(u.C1) : COLORS.NONE;
+  const max = Math.max(...data.units.map(x => x.forecast[0].aegis || 0));
+  return fcColor(u.forecast[0].aegis, max);
+}
+function label(f) {
+  const u = unitFor(f);
+  const name = nameOf(f);
+  if (f.context) return `<div style="font:12px Inter;padding:4px 6px">${esc(name)}<br><span style="color:#6b7a8c">outside this view</span></div>`;
+  if (!u) return `<div style="font:12px Inter;padding:4px 6px">${esc(name)}<br><span style="color:#6b7a8c">no recorded organised violence in scope</span></div>`;
+  const next = u.status === "ABSTAIN" ? "not estimated" : `${u.forecast[0].lo}–${u.forecast[0].hi} next month`;
+  return `<div style="font:12px Inter;padding:6px 8px;background:rgba(11,15,20,.92);border:1px solid #243042;border-radius:6px">
+    <b>${esc(u.name)}</b> <span style="color:${COLORS[u.status]}">${esc(u.status)}</span><br>
+    ${esc(next)}<br><span style="color:#6b7a8c">visibility ${Math.round(u.C1 * 100)}% · reported last month ${u.obs_last}</span></div>`;
+}
+
+function renderGlobe() {
+  world.polygonsData(features)
+    .polygonCapColor(capColor)
+    .polygonAltitude(f => { if (f.context) return 0.002; const u = unitFor(f); return u && selected === u.id ? 0.035 : u ? 0.008 : 0.004; })
+    .polygonLabel(label);
+  const maxN = Math.max(1, ...data.cells.map(c => c.n));
+  world.hexBinPointsData(data.cells)
+    .hexBinResolution(scope === "world" ? 3 : 5)
+    .hexAltitude(d => 0.004 + 0.12 * Math.sqrt(d.sumWeight / maxN))
+    .hexTopColor(d => `rgba(255,${Math.round(200 - 140 * Math.min(1, d.sumWeight / maxN))},90,0.85)`)
+    .hexSideColor(() => "rgba(255,140,90,0.35)")
+    .hexLabel(d => `<div style="font:12px JetBrains Mono;padding:4px 6px;background:rgba(11,15,20,.92);border:1px solid #243042;border-radius:6px">${d.sumWeight} recorded events, last 3 months<br><span style="color:#6b7a8c">aggregated area (~${Math.round(data.cell_deg * 111)} km cells)</span></div>`);
+}
+
+function renderList() {
+  const q = $("#search").value.trim().toLowerCase();
+  const rows = data.units
+    .filter(u => (u.activity12 > 0 || u.obs_last > 0 || scope !== "world") && u.name.toLowerCase().includes(q))
+    .sort((a, b) => (b.forecast[0].aegis ?? 1e9) - (a.forecast[0].aegis ?? 1e9));
+  $("#list").innerHTML = rows.map(u => `
+    <div class="row ${selected === u.id ? "sel" : ""}" role="option" tabindex="0" data-id="${u.id}" aria-selected="${selected === u.id}">
+      <span class="dot" style="background:${COLORS[u.status]}"></span>
+      <span>${esc(u.name)}</span>
+      <span class="num">${u.status === "ABSTAIN" ? "—" : Math.round(u.forecast[0].aegis)}</span>
+      <span class="num dim">${Math.round(u.C1 * 100)}%</span>
+    </div>`).join("") || `<div class="empty">No matches.</div>`;
+  $("#list").querySelectorAll(".row").forEach(el => {
+    el.onclick = () => select(+el.dataset.id, true);
+    el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(+el.dataset.id, true); } };
+  });
+}
+
+function spark(series) {
+  if (!series.length) return "";
+  const W = 360, H = 80, pad = 4;
+  const max = Math.max(1, ...series.map(s => Math.max(s.obs, s.exp)));
+  const x = i => pad + i * (W - 2 * pad) / Math.max(1, series.length - 1);
+  const y = v => H - pad - (v / max) * (H - 2 * pad);
+  const line = key => series.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`).join(" ");
+  const bars = series.map((s, i) => `<rect x="${(x(i) - 4).toFixed(1)}" y="${y(s.obs).toFixed(1)}" width="8" height="${(H - pad - y(s.obs)).toFixed(1)}" fill="${s.final ? "#3a4a5e" : "#56708f"}"/>`).join("");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Reported vs expected events, last 24 months">
+    ${bars}<path d="${line("exp")}" fill="none" stroke="#e6b450" stroke-width="2"/></svg>
+    <div class="legend"><span>▮ reported (dark = final data)</span><span style="color:#e6b450">— expected once reporting catches up</span>
+    <span style="margin-left:auto">${esc(series[0].m)} → ${esc(series[series.length - 1].m)}</span></div>`;
+}
+
+function renderDetail() {
+  const u = data.units.find(x => x.id === selected);
+  if (!u) { $("#right").innerHTML = `<div class="empty">Select a ${esc(data.unit)} on the globe or in the list.</div>`; return; }
+  const cls = u.status.toLowerCase();
+  const ev = u.evidence;
+  const cards = u.status === "ABSTAIN"
+    ? `<div class="card" style="grid-column:1/-1"><div class="k">FORECAST</div><div class="v abstain">not estimated</div>
+       <div class="r">reporting from here is too impaired to support a number</div></div>`
+    : u.forecast.map(f => `<div class="card"><div class="k">+${f.h} MONTH${f.h > 1 ? "S" : ""}</div>
+       <div class="v">${Math.round(f.aegis)}</div><div class="r">80%: ${f.lo}–${f.hi}</div>
+       <div class="r">baseline ${Math.round(f.base)}</div></div>`).join("");
+  $("#right").innerHTML = `
+    <h2>${esc(u.name)}<span class="badge ${cls}">${esc(u.status)}</span></h2>
+    <div class="sub">${esc(u.region)} · visibility ${Math.round(u.C1 * 100)}% · ${u.activity12.toFixed(1)} recorded events a month over the past year</div>
+    <div class="headline">${esc(ev.headline)}</div>
+    <div class="grid3">${cards}</div>
+    <div class="section">Last 24 months</div>
+    ${spark(u.series)}
+    <div class="section">Why</div>
+    ${ev.points.map(([k, s]) => `<p class="pt ${k === "Visibility" || k === "Silent feed" ? "vis" : ""}"><b>${esc(k)}:</b> ${esc(s.charAt(0).toUpperCase() + s.slice(1))}</p>`).join("")}
+    <div class="foot">${esc(ev.footer)}</div>`;
+}
+
+function fly(u) {
+  const f = features.find(ft => ft.properties[data.polygon_key] === u.geo);
+  if (!f) return;
+  const pts = [];
+  const walk = c => typeof c[0] === "number" ? pts.push(c) : c.forEach(walk);
+  walk(f.geometry.coordinates);
+  const lngs = pts.map(p => p[0]), lats = pts.map(p => p[1]);
+  const lng = (Math.min(...lngs) + Math.max(...lngs)) / 2, lat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const span = Math.max(Math.max(...lngs) - Math.min(...lngs), Math.max(...lats) - Math.min(...lats));
+  world.pointOfView({ lat, lng, altitude: Math.max(0.35, Math.min(2.2, span / 28)) }, 900);
+}
+
+function select(id, doFly) {
+  selected = id;
+  world.controls().autoRotate = false;
+  renderGlobe(); renderList(); renderDetail();
+  const u = data.units.find(x => x.id === id);
+  if (doFly && u) fly(u);
+}
+
+function renderHeader() {
+  const m = data.meta;
+  const counts = { OK: 0, WARN: 0, ABSTAIN: 0 };
+  data.units.forEach(u => counts[u.status]++);
+  $("#meta").textContent = `${data.title}${scope === "world" ? "" : " · provinces"} · origin ${m.origin} · data through ${m.data_through} · ${m.latest_candidate}`;
+  const bt = data.backtest;
+  let verdict = "";
+  if (bt && bt.ci) {
+    const [lo, hi] = bt.ci;
+    const v = hi < 0 ? ["AEGIS better", "ok"] : lo > 0 ? ["baseline better", "warn"] : ["no clear difference", ""];
+    verdict = `<span class="chip ${v[1]}" title="Backtest over ${bt.origins} origins: CRPS(AEGIS) − CRPS(baseline), 95% CI">ΔCRPS ${bt.diff >= 0 ? "+" : ""}${bt.diff.toFixed(2)} · ${v[0]}</span>`;
+  }
+  if (bt && bt.selected_candidate) {
+    verdict += `<span class="chip ok" title="A v0.2 candidate passes the pre-agreed rule on development data only; not yet confirmed on unseen data">dev pass: ${esc(bt.selected_candidate)} (unconfirmed)</span>`;
+  }
+  $("#chips").innerHTML = `${verdict}
+    <span class="chip ok">OK ${counts.OK}</span><span class="chip warn">WARN ${counts.WARN}</span><span class="chip abstain">ABSTAIN ${counts.ABSTAIN}</span>`;
+  $("#footer").textContent = data.footer;
+  $("#unitlabel").textContent = data.unit[0].toUpperCase() + data.unit.slice(1);
+  $("#search").placeholder = `Filter ${data.unit === "province" ? "provinces" : "countries"}…`;
+  document.querySelectorAll("[data-scope]").forEach(b => { b.classList.toggle("on", b.dataset.scope === scope); b.setAttribute("aria-selected", b.dataset.scope === scope); });
+  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
+  const scale = mode === "status"
+    ? `<span class="ok">■ OK</span><span class="warn">■ WARN</span><span class="abstain">■ ABSTAIN</span>`
+    : mode === "visibility" ? `<span style="color:#ff5f56">■ 40%</span><span style="color:#e6b450">■ 70%</span><span style="color:#3fc1b0">■ 100%+</span> reporting completeness`
+    : `<span style="color:#7aa2f7">■ low</span><span style="color:#f776be">■ high</span> expected events next month`;
+  $("#scale").innerHTML = `${scale}<span style="color:#ff8c5a">⬢ recorded events (aggregated)</span>`;
+}
+
+async function load(newScope) {
+  scope = newScope;
+  history.replaceState(null, "", `?scope=${scope}`);
+  selected = null;
+  try {
+    const r = await fetch(`/api/state?scope=${encodeURIComponent(scope)}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    data = j;
+    const g = await (await fetch(data.polygons)).json();
+    features = g.features.filter(f => f.properties[data.polygon_key] !== "Antarctica");
+    if (data.context_polygons) {         // neighbours drawn faintly for orientation only
+      const c = await (await fetch(data.context_polygons)).json();
+      const ctx = c.features.filter(f => f.properties.ADMIN !== data.context_exclude && f.properties.ADMIN !== "Antarctica")
+        .map(f => ({ ...f, context: true }));
+      features = ctx.concat(features);
+    }
+    byGeo = new Map(data.units.filter(u => u.geo).map(u => [u.geo, u]));
+    $("#err").style.display = "none";
+  } catch (e) {
+    $("#err").textContent = `Could not load ${scope}: ${e.message}`;
+    $("#err").style.display = "block";
+    return;
+  }
+  renderHeader(); renderGlobe(); renderList(); renderDetail();
+  if (data.bbox) {
+    const [x0, x1, y0, y1] = data.bbox;
+    world.controls().autoRotate = false;
+    world.pointOfView({ lat: (y0 + y1) / 2, lng: (x0 + x1) / 2, altitude: 0.42 }, 1200);
+  } else {
+    world.controls().autoRotate = true;
+    world.pointOfView({ lat: 22, lng: 35, altitude: 2.3 }, 1200);
+  }
+}
+
+document.querySelectorAll("[data-scope]").forEach(b => b.onclick = () => load(b.dataset.scope));
+document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { mode = b.dataset.mode; renderHeader(); renderGlobe(); });
+$("#search").oninput = renderList;
+load(scope);
+</script>
+</body>
+</html>

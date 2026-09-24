@@ -5,6 +5,7 @@
     aegis forecast        run today's forecast cycle
     aegis backtest        vintage-aware walk-forward evaluation
     aegis explain <name>  the evidence behind one country's numbers
+    aegis globe           3D globe in the browser, served locally
     aegis status          what is in the store
     aegis verify          re-hash every raw file against the manifest
 """
@@ -117,6 +118,25 @@ def backtest(start: str = typer.Option("2022-06-01", help="First forecast origin
                  scope=_check_scope(scope), target_start=target_start, target_end=target_end,
                  progress=_say)
     console.print(Markdown((out / "report.md").read_text(encoding="utf-8")))
+
+
+@app.command()
+def globe(scope: str = SCOPE_OPT,
+          port: int = typer.Option(8765, help="Local port (the server binds to 127.0.0.1 only)."),
+          open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the browser.")) -> None:
+    """3D globe of forecasts, visibility and aggregated recorded events, served on this machine."""
+    from . import live
+    from .globe.server import ensure_polygons, serve
+
+    scope = _check_scope(scope)
+    for sc in config.SCOPES:  # make sure every scope the page can switch to has a forecast
+        try:
+            live.load(sc)
+        except FileNotFoundError:
+            _say(f"computing today's forecast ({sc})...")
+            live.compute(progress=_say, scope=sc)
+    ensure_polygons()
+    serve(scope, port=port, open_browser=open_browser)
 
 
 @app.command()

@@ -386,8 +386,17 @@ class AegisApp(App):
         self.query_one("#tabs", TabbedContent).active = tab_id
 
     def action_globe(self) -> None:
-        self.notify("The 3D globe comes after the research results hold up (see README roadmap).",
-                    title="Not in v0.1")
+        from ..globe.server import serve
+
+        try:
+            if getattr(self, "_globe", None) is None:
+                self._globe = serve(self.scope, port=0, open_browser=True, background=True)
+            else:
+                import webbrowser
+                webbrowser.open(f"http://127.0.0.1:{self._globe.server_address[1]}/?scope={self.scope}")
+            self.notify("Opened in your browser (served on this machine only).", title="AEGIS globe")
+        except OSError as exc:
+            self.notify(str(exc), title="Globe could not start", severity="error")
 
 
 def run(state: LiveState, scope: str = "world") -> None:

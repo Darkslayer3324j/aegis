@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "aegis-globe",
+      "runtimeExecutable": ".venv/Scripts/aegis.exe",
+      "runtimeArgs": ["globe", "--no-open", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}
